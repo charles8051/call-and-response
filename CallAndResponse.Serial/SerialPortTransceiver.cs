@@ -4,58 +4,43 @@ using System.IO.Ports;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
-using CallAndResponse;
 
 namespace CallAndResponse.Serial
 {
-    internal class SerialPortTransceiver : ITransceiver
+    public class SerialPortTransceiver : Transceiver
     {
         private SerialPort _serialPort;
 
         private readonly int _maxRxBufferSize = 1024;
 
+        public static SerialPortTransceiver CreateFromId(ushort vid, ushort pid, int baudRate, Parity parity, int dataBits, StopBits stopBits)
+        {
+            string? portName = SerialPortUtils.FindPortNameById(vid, pid);
+            if (portName is null)
+            {
+                throw new ArgumentException("Device not found");
+            }
+            return new SerialPortTransceiver(portName, baudRate, parity, dataBits, stopBits);
+        }
         public SerialPortTransceiver(string portName, int baudRate, Parity parity, int dataBits, StopBits stopBits)
         {
+            // TODO: defer instantiation of SerialPort to Open method?
             _serialPort = new SerialPort(portName, baudRate, parity, dataBits, stopBits);
             _serialPort.WriteTimeout = SerialPort.InfiniteTimeout;
             _serialPort.ReadTimeout = SerialPort.InfiniteTimeout;
         }
 
-        public async Task Open()
+        public override async Task Open()
         {
             await Task.Run(() => _serialPort.Open());
         }
 
-        public async Task Close()
+        public override async Task Close()
         {
             await Task.Run(() => _serialPort.Close());
         }
 
-        public async Task<byte[]> SendReceive(byte[] writeBytes, int numBytesExpected, CancellationToken token)
-        {
-            await Send(writeBytes, token).ConfigureAwait(false);    
-            return await ReceiveExactly(numBytesExpected, token).ConfigureAwait(false);
-        }
-
-        public async Task<byte[]> SendReceive(byte[] writeBytes, char terminator, CancellationToken token)
-        {
-            await Send(writeBytes, token).ConfigureAwait(false);
-            return await ReceiveUntilTerminator(terminator, token).ConfigureAwait(false);
-        }
-
-        public async Task<byte[]> SendReceive(byte[] writeBytes, byte[] terminatorPattern, CancellationToken token)
-        {
-            await Send(writeBytes, token).ConfigureAwait(false);
-            return await ReceiveUntilTerminatorPattern(terminatorPattern, token).ConfigureAwait(false);
-        }
-
-        public async Task<byte[]> SendReceive(byte[] writeBytes, Func<byte[], int> detectMessage, CancellationToken token)
-        {
-            await Send(writeBytes, token).ConfigureAwait(false);
-            return await ReceiveUntilMessageDetected(detectMessage, token).ConfigureAwait(false);
-        }
-
-        private async Task Send(byte[] writeBytes, CancellationToken token)
+        protected override async Task Send(ReadOnlyMemory<byte> writeBytes, CancellationToken token)
         {
             if (_serialPort.IsOpen is false)
             {
@@ -63,10 +48,10 @@ namespace CallAndResponse.Serial
             }
 
             await _serialPort.BaseStream.FlushAsync();
-            await _serialPort.BaseStream.WriteAsync(writeBytes, 0, writeBytes.Length, token).ConfigureAwait(false);
+            await _serialPort.BaseStream.WriteAsync(writeBytes.ToArray(), 0, writeBytes.Length, token).ConfigureAwait(false);
         }
 
-        private async Task<byte[]> ReceiveUntilMessageDetected(Func<byte[], int> detectMessage, CancellationToken token)
+        protected override async Task<Memory<byte>> ReceiveUntilMessageDetected(Func<ReadOnlyMemory<byte>, int> detectMessage, CancellationToken token)
         {
             if (_serialPort.IsOpen is false)
             {
@@ -107,26 +92,7 @@ namespace CallAndResponse.Serial
             }
         }
 
-        private async Task<byte[]> ReceiveUntilTerminatorPattern(byte[] terminatorPattern, CancellationToken token)
-        {
-            return await ReceiveUntilMessageDetected((readBytes) =>
-            {
-                int terminatorIndex = readBytes.Locate(terminatorPattern).FirstOrDefault();
-                int payloadLength = terminatorIndex < 0 ? 0 : terminatorIndex;
-                return payloadLength;
-            }, token).ConfigureAwait(false);
-        }
-        private async Task<byte[]> ReceiveUntilTerminator(char terminator, CancellationToken token)
-        {
-            return await ReceiveUntilMessageDetected((readBytes) =>
-            {
-                int terminatorIndex = readBytes.ToList().IndexOf((byte)terminator);
-                int payloadLength = terminatorIndex < 0 ? 0 : terminatorIndex;
-                return payloadLength;
-            }, token).ConfigureAwait(false);
-        }
-
-        private async Task<byte[]> ReceiveExactly(int numBytesExpected, CancellationToken token)
+        protected override async Task<Memory<byte>> ReceiveExactly(int numBytesExpected, CancellationToken token)
         {
             if (_serialPort.IsOpen is false)
             {
@@ -137,7 +103,8 @@ namespace CallAndResponse.Serial
             {
                 try
                 {
-                    byte[] readBytes = new byte[numBytesExpected];
+                    var readData = new Memory<byte>(new byte[numBytesExpected]);
+                    //byte[] readBytes = new byte[numBytesExpected];
                     int numBytesRead = 0;
 
                     while (token.IsCancellationRequested == false)
@@ -146,8 +113,8 @@ namespace CallAndResponse.Serial
                         {
                             continue;
                         }
-
-                        numBytesRead += await _serialPort.BaseStream.ReadAsync(readBytes, numBytesRead, numBytesExpected - numBytesRead).ConfigureAwait(false);
+                        numBytesRead += await _serialPort.BaseStream.ReadAsync(readData.Slice(numBytesRead), token).ConfigureAwait(false);
+                        //numBytesRead += await _serialPort.BaseStream.ReadAsync(readBytes, numBytesRead, numBytesExpected - numBytesRead).ConfigureAwait(false);
 
                         if (numBytesRead == numBytesExpected)
                         {
@@ -158,7 +125,8 @@ namespace CallAndResponse.Serial
                     }
 
                     token.ThrowIfCancellationRequested();
-                    return readBytes.Take(numBytesRead).ToArray();
+                    //return readBytes.Take(numBytesRead).ToArray();
+                    return readData.Slice(0, numBytesRead);
                 }
                 catch (Exception e)
                 {
