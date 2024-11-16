@@ -14,17 +14,23 @@ namespace CallAndResponse.Modbus
             _transceiver = transceiver;
         }
 
-        public async Task Open()
+        public async Task Open(CancellationToken token = default)
         {
-            await _transceiver.Open();
+            await _transceiver.Open(token);
         }
 
-        public async Task Close()
+        public async Task Close(CancellationToken token = default)
         {
-            await _transceiver.Close();
+            await _transceiver.Close(token);
         }
 
-        public async Task<Memory<byte>> ReadHoldingRegistersAsync(byte unitIdentifier, ushort startingAddress, ushort numRegisters, CancellationToken token = default)
+        public Task<Memory<byte>> ReadHoldingRegisters(byte unitIdentifier, ushort startingAddress, int numBytes, CancellationToken token = default)
+        {
+            if (numBytes % 2 != 0) throw new ArgumentException();
+            return ReadHoldingRegisters(unitIdentifier, startingAddress, numRegisters:(ushort)(numBytes / 2), token);
+        }
+
+        public async Task<Memory<byte>> ReadHoldingRegisters(byte unitIdentifier, ushort startingAddress, ushort numRegisters, CancellationToken token = default)
         {
             var call = new ModbusRtuRequestBuilder()
                 .SetUnitIdentifier(unitIdentifier)
@@ -32,6 +38,7 @@ namespace CallAndResponse.Modbus
                 .SetFunctionCode(ModbusFunctionCode.ReadHoldingRegisters)
                 .SetNumItems(numRegisters)
                 .Build();
+
             try
             {
                 var response = await _transceiver.SendReceive(call, 5 + 2 * numRegisters, token).ConfigureAwait(false);
@@ -39,19 +46,39 @@ namespace CallAndResponse.Modbus
                 var payload = response.Slice(3, response.Length - 5);
                 return payload.Flip16BitValues();
             }
-            catch (TransceiverException e)
+            catch (TransceiverTransportException e)
             {
                 throw new ModbusTransportException("Transceiver is cooked", e);
             }
-            catch (OperationCanceledException e)
+            catch (Exception e)
             {
                 throw;
             }
         }
 
-        public Task WriteMultipleRegistersAsync(byte unitIdentifier, ushort startingAddress, ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
+        public async Task WriteRegisters(byte unitIdentifier, ushort startingAddress, ReadOnlyMemory<byte> data, CancellationToken token = default)
         {
-            throw new NotImplementedException();
+            var call = new ModbusRtuRequestBuilder()
+                .SetUnitIdentifier(unitIdentifier)
+                .SetStartingAddress(startingAddress)
+                .SetFunctionCode(ModbusFunctionCode.WriteMultipleRegisters)
+                .SetNumItems((ushort)data.Length)
+                .SetData(data.ToArray())
+                .Build();
+
+            try
+            {
+                var response = await _transceiver.SendReceive(call, 3 + 2, token).ConfigureAwait(false);
+                ValidateResponse(unitIdentifier, response, ModbusFunctionCode.WriteMultipleRegisters);
+            }
+            catch (TransceiverTransportException e)
+            {
+                throw new ModbusTransportException("Transceiver is cooked", e);
+            }
+            catch (Exception e)
+            {
+                throw;
+            }
         }
 
         private void ValidateResponse(byte unitIdentifier, Memory<byte> frame, ModbusFunctionCode functionCode)

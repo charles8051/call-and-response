@@ -43,7 +43,7 @@ namespace CallAndResponse.Modbus
             return this;
         }
 
-        public byte[] Build()
+        public Memory<byte> Build()
         {
             var frame = new List<byte>()
             {
@@ -82,6 +82,12 @@ namespace CallAndResponse.Modbus
 
             // Add CRC
             return AddCrc(frame).ToArray();
+        }
+
+        private Memory<byte> AddCrc(ReadOnlySpan<byte> frame)
+        {
+            return AddCrc(frame.ToArray().ToList()).ToArray().AsMemory();
+            // TODO: Optimize
         }
 
         private List<byte> AddCrc(List<byte> frame)

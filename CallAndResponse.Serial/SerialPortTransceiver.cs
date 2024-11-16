@@ -13,6 +13,10 @@ namespace CallAndResponse.Serial
 
         private readonly int _maxRxBufferSize = 1024;
 
+        private bool _isConnected;
+        public override bool IsConnected => _serialPort.IsOpen;
+
+
         public static SerialPortTransceiver CreateFromId(ushort vid, ushort pid, int baudRate, Parity parity, int dataBits, StopBits stopBits)
         {
             string? portName = SerialPortUtils.FindPortNameById(vid, pid);
@@ -30,17 +34,17 @@ namespace CallAndResponse.Serial
             _serialPort.ReadTimeout = SerialPort.InfiniteTimeout;
         }
 
-        public override async Task Open()
+        public override async Task Open(CancellationToken token)
         {
             await Task.Run(() => _serialPort.Open());
         }
 
-        public override async Task Close()
+        public override async Task Close(CancellationToken token)
         {
             await Task.Run(() => _serialPort.Close());
         }
 
-        protected override async Task Send(ReadOnlyMemory<byte> writeBytes, CancellationToken token)
+        public override async Task Send(ReadOnlyMemory<byte> writeBytes, CancellationToken token)
         {
             if (_serialPort.IsOpen is false)
             {
@@ -51,7 +55,7 @@ namespace CallAndResponse.Serial
             await _serialPort.BaseStream.WriteAsync(writeBytes.ToArray(), 0, writeBytes.Length, token).ConfigureAwait(false);
         }
 
-        protected override async Task<Memory<byte>> ReceiveUntilMessageDetected(Func<ReadOnlyMemory<byte>, int> detectMessage, CancellationToken token)
+        public override async Task<Memory<byte>> ReceiveUntilMessageDetected(Func<ReadOnlyMemory<byte>, int> detectMessage, CancellationToken token)
         {
             if (_serialPort.IsOpen is false)
             {
@@ -68,7 +72,7 @@ namespace CallAndResponse.Serial
 
                     while (token.IsCancellationRequested == false)
                     {
-                        if (numBytesRead == _maxRxBufferSize) throw new IOException("buffer overflow");
+                        if (numBytesRead >= _maxRxBufferSize) throw new IOException("buffer overflow");
                         if (_serialPort.BytesToRead == 0) continue;
 
                         numBytesRead += await _serialPort.BaseStream.ReadAsync(readBytes, numBytesRead, _maxRxBufferSize - numBytesRead , token);
@@ -92,7 +96,7 @@ namespace CallAndResponse.Serial
             }
         }
 
-        protected override async Task<Memory<byte>> ReceiveExactly(int numBytesExpected, CancellationToken token)
+        public override async Task<Memory<byte>> ReceiveExactly(int numBytesExpected, CancellationToken token)
         {
             if (_serialPort.IsOpen is false)
             {
