@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CallAndResponse.Modbus
+namespace CallAndResponse.Protocol.Modbus
 {
     public class ModbusRtuClient : IModbusClient
     {

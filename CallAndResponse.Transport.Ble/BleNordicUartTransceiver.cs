@@ -10,11 +10,17 @@ using Plugin.BLE.Abstractions;
 using System.Diagnostics;
 using System.Threading;
 using Serilog;
+using System.Text;
 using System.Threading.Channels;
 using Serilog.Events;
 using Serilog.Sinks.SystemConsole.Themes;
+using System.Numerics;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.ComponentModel.Design.Serialization;
 
-namespace CallAndResponse.Ble
+namespace CallAndResponse.Transport.Ble
 {
     public class BleNordicUartTransceiver : Transceiver
     {
@@ -45,20 +51,19 @@ namespace CallAndResponse.Ble
         private Channel<byte> rxChannel = Channel.CreateBounded<byte>(_rxBufferSize);
 
         public bool _isConnected = false;
-        public override bool IsConnected => _isConnected;
+        public override bool IsOpen => _isConnected;
 
         //public int ReadTimeout { get; set; } = 500;
         //public int WriteTimeout { get; set; } = 500;
 
-        public BleNordicUartTransceiver()
+        public BleNordicUartTransceiver() : base()
         {
-            CreateDefaultLogger();
+            
         }
 
-        public BleNordicUartTransceiver(Guid id)
+        public BleNordicUartTransceiver(Guid id) : base()
         {
             _id = id;
-            CreateDefaultLogger();
         }
 
         public override async Task Open(CancellationToken token = default)
@@ -140,7 +145,7 @@ namespace CallAndResponse.Ble
 
         public override async Task Send(ReadOnlyMemory<byte> writeBytes, CancellationToken token = default)
         {
-            if (IsConnected == false)
+            if (IsOpen == false)
             {
                 throw new TransceiverTransportException("Cannot read while disconnected");
             }
@@ -152,7 +157,6 @@ namespace CallAndResponse.Ble
                     var result = await uartTx.WriteAsync(writeBytes.ToArray(), token);
                     if (result == 0)
                     {
-                        LogVerbose("Sent {@ByteLength} bytes to BLE", writeBytes.Length);
                         await Task.Delay(3); // Add some deadtime to avoid overloading our garbage esp32 arduino code
                     } else
                     {
@@ -172,36 +176,9 @@ namespace CallAndResponse.Ble
             }
         }
 
-        public override async Task<Memory<byte>> ReceiveExactly(int numBytesExpected, CancellationToken token = default)
+        public override async Task<Memory<byte>> ReceiveMessage(Func<ReadOnlyMemory<byte>, int> detectMessage, CancellationToken token = default)
         {
-            if (IsConnected == false)
-            {
-                LogError("Cannot read while disconnected");
-                throw new TransceiverTransportException("Cannot read while disconnected");
-            }
-            if (numBytesExpected > _rxBufferSize)
-            {
-                LogError($"numBytesExpected cannot be greater than {_rxBufferSize}");
-                throw new ArgumentException($"numBytesExpected cannot be greater than {_rxBufferSize}");
-            }
-
-            await Clear();
-
-            var numBytesRead = 0;
-            var data = new List<byte>();
-            while (numBytesRead < numBytesExpected && token.IsCancellationRequested is false)
-            {
-                token.ThrowIfCancellationRequested();
-                data.Add(await rxChannel.Reader.ReadAsync(token));
-                numBytesRead++;
-            }
-            token.ThrowIfCancellationRequested();
-            return data.ToArray().AsMemory();
-        }
-
-        public override async Task<Memory<byte>> ReceiveUntilMessageDetected(Func<ReadOnlyMemory<byte>, int> detectMessage, CancellationToken token = default)
-        {
-            if (IsConnected == false)
+            if (IsOpen == false)
             {
                 LogError("Cannot read while disconnected");
                 throw new TransceiverTransportException("Cannot read while disconnected");
@@ -257,39 +234,50 @@ namespace CallAndResponse.Ble
         {
             var tcs = new TaskCompletionSource<IDevice?>();
 
-            using var timeoutCancelSource = new CancellationTokenSource();
-            using var scanCancel = CancellationTokenSource.CreateLinkedTokenSource(timeoutCancelSource.Token, token);
+            using var internalCancelSource = new CancellationTokenSource();
+            using var linkedCancelSource = CancellationTokenSource.CreateLinkedTokenSource(internalCancelSource.Token, token);
 
-            async void deviceDiscovered(object sender, DeviceEventArgs a)
+            void deviceDiscovered(object sender, DeviceEventArgs args)
             {
-                //a.Device.State == DeviceState.Connected;
-                Console.WriteLine(a.Device.Name);
-                var records = a.Device.AdvertisementRecords;
-                foreach(var record in records)
+                LogInformation("Device Found: {@DeviceName}", args.Device.Name);
+                LogInformation("Device Availability: {DeviceAvailability}", args.Device.State);
+                
+                var records = args.Device.AdvertisementRecords;
+                foreach (var record in records)
                 {
-                    Console.WriteLine($"    {record.Type}");
-                    
-                    //if (record.Type == AdvertisementRecordType.ServiceData)
-                    //{
+                    if (record.Type == AdvertisementRecordType.UuidsIncomplete128Bit || record.Type == AdvertisementRecordType.UuidsComplete128Bit)
+                    {
+                        var hexData = record.Data.ToList().Select(x => $"{x:X}").ToArray().Reverse();
 
-                    //}
+
+                        var guidData = record.Data.AsMemory();
+                        var a = guidData.Slice(12, 4).ToArray();
+                        var b = guidData.Slice(10, 2).ToArray();
+                        var c = guidData.Slice(8, 2).ToArray();
+                        var d0 = guidData.Slice(0, 1).ToArray().FirstOrDefault();
+                        var d1 = guidData.Slice(1, 1).ToArray().FirstOrDefault();
+                        var d2 = guidData.Slice(2, 1).ToArray().FirstOrDefault();
+                        var d3 = guidData.Slice(3, 1).ToArray().FirstOrDefault();
+                        var d4 = guidData.Slice(4, 1).ToArray().FirstOrDefault();
+                        var d5 = guidData.Slice(5, 1).ToArray().FirstOrDefault();
+                        var d6 = guidData.Slice(6, 1).ToArray().FirstOrDefault();
+                        var d7 = guidData.Slice(7, 1).ToArray().FirstOrDefault();
+                        var uuid = new Guid(BitConverter.ToUInt32(a), BitConverter.ToUInt16(b), BitConverter.ToUInt16(c), d7, d6, d5, d4, d3, d2, d1, d0);
+
+                        if (uuid.Equals(UartServiceGuid))
+                        {
+                            LogInformation("Found device with Nordic UART Service. Id: {@DeviceId}", args.Device.Id);
+                        }
+                        adapter.DeviceDiscovered -= deviceDiscovered;
+                        linkedCancelSource.Cancel();
+                        tcs.TrySetResult(args.Device);
+                    }
                 }
-                //var uartService = await a.Device.GetServiceAsync(UartServiceGuid);
-
-                    //if (!(uartService is null))
-                    //{
-                    //    LogInformation("Found Service: {@ServiceId}", uartService.Id);
-
-                    //    adapter.DeviceDiscovered -= deviceDiscovered;
-
-                    //    _id = a.Device.Id;
-                    //    scanCancel.Cancel();
-                    //    tcs.TrySetResult(a.Device);
-                    //}
             }
 
-            timeoutCancelSource.Token.Register(() =>
+            token.Register(() =>
             {
+                LogInformation("Scan cancelled by caller");
                 adapter.DeviceDiscovered -= deviceDiscovered;
                 tcs.TrySetException(new OperationCanceledException());
             });
@@ -297,7 +285,7 @@ namespace CallAndResponse.Ble
             adapter.DeviceDiscovered += deviceDiscovered;
             adapter.ScanMode = ScanMode.LowLatency;
             LogInformation("Scanning for device with Nordic UART Service");
-            await adapter.StartScanningForDevicesAsync(scanCancel.Token);
+            await adapter.StartScanningForDevicesAsync(linkedCancelSource.Token);
 
             return await tcs.Task;
         }
@@ -311,7 +299,7 @@ namespace CallAndResponse.Ble
                 await rxChannel.Writer.WriteAsync(b);
             }
 
-            LogVerbose("Received notification of {ByteLength} bytes from BLE server: ", data.Length);
+            LogTrace("Received notification of {ByteLength} bytes from BLE server: ", data.Length);
         }
 
         protected void DeviceDisconnectedHandler(object source, DeviceEventArgs args)
@@ -327,7 +315,7 @@ namespace CallAndResponse.Ble
         private async Task Clear()
         {
             var discard = rxChannel.Reader.ReadAllAsync();
-            await foreach (var item in discard) { }
+            //await foreach (var item in discard) { }
         }
 
 

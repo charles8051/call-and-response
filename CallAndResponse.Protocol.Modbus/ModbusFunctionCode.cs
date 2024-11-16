@@ -1,4 +1,4 @@
-﻿namespace CallAndResponse.Modbus
+﻿namespace CallAndResponse.Protocol.Modbus
 {
     public enum ModbusFunctionCode : byte
     {

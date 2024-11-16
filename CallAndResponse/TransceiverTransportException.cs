@@ -8,6 +8,7 @@ namespace CallAndResponse
     {
         public TransceiverTransportException(string message) : base(message)
         {
+
         }
     }
 }

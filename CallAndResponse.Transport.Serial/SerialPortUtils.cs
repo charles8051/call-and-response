@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Management;
 
-namespace CallAndResponse.Serial
+namespace CallAndResponse.Transport.Serial
 {
     public class SerialPortUtils
     {

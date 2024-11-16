@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace CallAndResponse.Modbus
+namespace CallAndResponse.Protocol.Modbus
 {
     public class ModbusFramingException : Exception
     {

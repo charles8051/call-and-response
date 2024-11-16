@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-namespace CallAndResponse.Modbus
+namespace CallAndResponse.Protocol.Modbus
 {
     internal class ModbusRtuRequestBuilder
     {

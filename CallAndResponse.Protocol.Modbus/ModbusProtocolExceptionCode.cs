@@ -1,4 +1,4 @@
-﻿namespace CallAndResponse.Modbus
+﻿namespace CallAndResponse.Protocol.Modbus
 {
     /// <summary>
     /// Specifies the Modbus exception type.

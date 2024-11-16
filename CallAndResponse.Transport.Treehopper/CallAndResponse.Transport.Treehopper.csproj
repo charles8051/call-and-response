@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Treehopper" Version="1.11.6" />
+    <PackageReference Include="Treehopper.Desktop" Version="1.11.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CallAndResponse\CallAndResponse.csproj" />
+  </ItemGroup>
+
+</Project>

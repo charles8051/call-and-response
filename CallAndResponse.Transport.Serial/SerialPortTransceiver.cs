@@ -5,7 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
 
-namespace CallAndResponse.Serial
+namespace CallAndResponse.Transport.Serial
 {
     public class SerialPortTransceiver : Transceiver
     {
@@ -14,7 +14,7 @@ namespace CallAndResponse.Serial
         private readonly int _maxRxBufferSize = 1024;
 
         private bool _isConnected;
-        public override bool IsConnected => _serialPort.IsOpen;
+        public override bool IsOpen => _serialPort.IsOpen;
 
 
         public static SerialPortTransceiver CreateFromId(ushort vid, ushort pid, int baudRate, Parity parity, int dataBits, StopBits stopBits)
@@ -55,7 +55,7 @@ namespace CallAndResponse.Serial
             await _serialPort.BaseStream.WriteAsync(writeBytes.ToArray(), 0, writeBytes.Length, token).ConfigureAwait(false);
         }
 
-        public override async Task<Memory<byte>> ReceiveUntilMessageDetected(Func<ReadOnlyMemory<byte>, int> detectMessage, CancellationToken token)
+        public override async Task<Memory<byte>> ReceiveMessage(Func<ReadOnlyMemory<byte>, int> detectMessage, CancellationToken token)
         {
             if (_serialPort.IsOpen is false)
             {
@@ -96,48 +96,53 @@ namespace CallAndResponse.Serial
             }
         }
 
-        public override async Task<Memory<byte>> ReceiveExactly(int numBytesExpected, CancellationToken token)
-        {
-            if (_serialPort.IsOpen is false)
-            {
-                _serialPort.Open();
-            }
+        //public override async Task<Memory<byte>> ReceiveExactly(int numBytesExpected, CancellationToken token)
+        //{
 
-            using (token.Register(() => _serialPort.Close()))
-            {
-                try
-                {
-                    var readData = new Memory<byte>(new byte[numBytesExpected]);
-                    //byte[] readBytes = new byte[numBytesExpected];
-                    int numBytesRead = 0;
+        //}
 
-                    while (token.IsCancellationRequested == false)
-                    {
-                        if (_serialPort.BytesToRead == 0)
-                        {
-                            continue;
-                        }
-                        numBytesRead += await _serialPort.BaseStream.ReadAsync(readData.Slice(numBytesRead), token).ConfigureAwait(false);
-                        //numBytesRead += await _serialPort.BaseStream.ReadAsync(readBytes, numBytesRead, numBytesExpected - numBytesRead).ConfigureAwait(false);
+        //public override async Task<Memory<byte>> ReceiveExactly(int numBytesExpected, CancellationToken token)
+        //{
+        //    if (_serialPort.IsOpen is false)
+        //    {
+        //        _serialPort.Open();
+        //    }
 
-                        if (numBytesRead == numBytesExpected)
-                        {
-                            break;
-                        }
+        //    using (token.Register(() => _serialPort.Close()))
+        //    {
+        //        try
+        //        {
+        //            var readData = new Memory<byte>(new byte[numBytesExpected]);
+        //            //byte[] readBytes = new byte[numBytesExpected];
+        //            int numBytesRead = 0;
 
-                        token.ThrowIfCancellationRequested();
-                    }
+        //            while (token.IsCancellationRequested == false)
+        //            {
+        //                if (_serialPort.BytesToRead == 0)
+        //                {
+        //                    continue;
+        //                }
+        //                numBytesRead += await _serialPort.BaseStream.ReadAsync(readData.Slice(numBytesRead), token).ConfigureAwait(false);
+        //                //numBytesRead += await _serialPort.BaseStream.ReadAsync(readBytes, numBytesRead, numBytesExpected - numBytesRead).ConfigureAwait(false);
 
-                    token.ThrowIfCancellationRequested();
-                    //return readBytes.Take(numBytesRead).ToArray();
-                    return readData.Slice(0, numBytesRead);
-                }
-                catch (Exception e)
-                {
-                    throw;
-                }
-            }
-        }
+        //                if (numBytesRead == numBytesExpected)
+        //                {
+        //                    break;
+        //                }
+
+        //                token.ThrowIfCancellationRequested();
+        //            }
+
+        //            token.ThrowIfCancellationRequested();
+        //            //return readBytes.Take(numBytesRead).ToArray();
+        //            return readData.Slice(0, numBytesRead);
+        //        }
+        //        catch (Exception e)
+        //        {
+        //            throw;
+        //        }
+        //    }
+        //}
 
     }
 

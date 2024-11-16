@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\CallAndResponse.Serial\CallAndResponse.Serial.csproj" />
+    <ProjectReference Include="..\CallAndResponse.Transport.Serial\CallAndResponse.Transport.Serial.csproj" />
     <ProjectReference Include="..\CallAndResponse\CallAndResponse.csproj" />
   </ItemGroup>
 

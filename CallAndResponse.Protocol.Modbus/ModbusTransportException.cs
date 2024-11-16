@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace CallAndResponse.Modbus
+namespace CallAndResponse.Protocol.Modbus
 {
     [Serializable]
     internal class ModbusTransportException : Exception

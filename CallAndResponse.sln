@@ -1,0 +1,55 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.10.35027.167
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CallAndResponse", "CallAndResponse\CallAndResponse.csproj", "{EC26804C-F2F1-4D78-A14F-3587BE7B4D85}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CallAndResponse.Transport.Serial", "CallAndResponse.Transport.Serial\CallAndResponse.Transport.Serial.csproj", "{266294E2-A5AB-4C32-911B-4747E1B3B6A2}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CallAndResponse.Transport.Treehopper", "CallAndResponse.Transport.Treehopper\CallAndResponse.Transport.Treehopper.csproj", "{822A299C-4F61-445F-B9F7-03909491C55A}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CallAndResponse.Transport.Ble", "CallAndResponse.Transport.Ble\CallAndResponse.Transport.Ble.csproj", "{352634B5-0B84-443B-A533-D5F8549B3EB2}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CallAndResponse.Protocol.Modbus", "CallAndResponse.Protocol.Modbus\CallAndResponse.Protocol.Modbus.csproj", "{9B9F845B-2385-4EA9-BD79-E5B1B9188252}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CallAndResponse.Test.Sandbox", "CallAndResponse.Test.Sandbox\CallAndResponse.Test.Sandbox.csproj", "{EEEB970E-F16B-43F4-901F-8B6A51C3A3AB}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{EC26804C-F2F1-4D78-A14F-3587BE7B4D85}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EC26804C-F2F1-4D78-A14F-3587BE7B4D85}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EC26804C-F2F1-4D78-A14F-3587BE7B4D85}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EC26804C-F2F1-4D78-A14F-3587BE7B4D85}.Release|Any CPU.Build.0 = Release|Any CPU
+		{266294E2-A5AB-4C32-911B-4747E1B3B6A2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{266294E2-A5AB-4C32-911B-4747E1B3B6A2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{266294E2-A5AB-4C32-911B-4747E1B3B6A2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{266294E2-A5AB-4C32-911B-4747E1B3B6A2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{822A299C-4F61-445F-B9F7-03909491C55A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{822A299C-4F61-445F-B9F7-03909491C55A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{822A299C-4F61-445F-B9F7-03909491C55A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{822A299C-4F61-445F-B9F7-03909491C55A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{352634B5-0B84-443B-A533-D5F8549B3EB2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{352634B5-0B84-443B-A533-D5F8549B3EB2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{352634B5-0B84-443B-A533-D5F8549B3EB2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{352634B5-0B84-443B-A533-D5F8549B3EB2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9B9F845B-2385-4EA9-BD79-E5B1B9188252}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9B9F845B-2385-4EA9-BD79-E5B1B9188252}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9B9F845B-2385-4EA9-BD79-E5B1B9188252}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9B9F845B-2385-4EA9-BD79-E5B1B9188252}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EEEB970E-F16B-43F4-901F-8B6A51C3A3AB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EEEB970E-F16B-43F4-901F-8B6A51C3A3AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EEEB970E-F16B-43F4-901F-8B6A51C3A3AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EEEB970E-F16B-43F4-901F-8B6A51C3A3AB}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C6BE4E4E-EF99-4F32-936E-50655B32F671}
+	EndGlobalSection
+EndGlobal
