@@ -157,7 +157,7 @@ namespace CallAndResponse.Transport.Ble
                     var result = await uartTx.WriteAsync(writeBytes.ToArray(), token);
                     if (result == 0)
                     {
-                        await Task.Delay(3); // Add some deadtime to avoid overloading our garbage esp32 arduino code
+                        //await Task.Delay(3); // Add some deadtime to avoid overloading our garbage esp32 arduino code
                     } else
                     {
                         throw new TransceiverTransportException("Failed to write to BLE");

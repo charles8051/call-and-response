@@ -7,9 +7,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'" />
   <PropertyGroup>
+
     <DefineConstants>LOG_TRANSCEIVER_INFO</DefineConstants>
   </PropertyGroup>
 
@@ -17,7 +17,6 @@
     <ProjectReference Include="..\CallAndResponse.Transport.Ble\CallAndResponse.Transport.Ble.csproj" />
     <ProjectReference Include="..\CallAndResponse.Protocol.Modbus\CallAndResponse.Protocol.Modbus.csproj" />
     <ProjectReference Include="..\CallAndResponse.Transport.Serial\CallAndResponse.Transport.Serial.csproj" />
-    <ProjectReference Include="..\CallAndResponse.Treehopper\CallAndResponse.Transport.Treehopper.csproj" />
     <ProjectReference Include="..\CallAndResponse\CallAndResponse.csproj" />
   </ItemGroup>
 

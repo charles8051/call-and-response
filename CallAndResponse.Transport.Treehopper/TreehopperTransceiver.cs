@@ -1,4 +1,6 @@
 ﻿using System;
+using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Treehopper;
@@ -11,6 +13,7 @@ namespace CallAndResponse.Transport.Treehopper
         public override bool IsOpen => throw new NotImplementedException();
 
         private TreehopperUsb _board;
+        private int _maxRxBufferSize = 1024;
 
         public TreehopperTransceiver(TreehopperUsb board)
         {
@@ -34,20 +37,39 @@ namespace CallAndResponse.Transport.Treehopper
             _board.Disconnect();
         }
 
-        public override async Task<Memory<byte>> ReceiveExactly(int numBytesExpected, CancellationToken token = default)
-        {
-            var bytes = await _board.Uart.ReceiveAsync(numBytesExpected);
-            return bytes.AsMemory();
-        }
-
         public override async Task<Memory<byte>> ReceiveMessage(Func<ReadOnlyMemory<byte>, int> detectMessage, CancellationToken token = default)
         {
-            throw new NotImplementedException();
+            var data = await _board.Uart.ReceiveAsync();
+            data.AsMemory();
+
+            var payloadLength = 0;
+            var numBytesRead = 0;
+
+            var readBytes = new byte[_maxRxBufferSize];
+
+            while (token.IsCancellationRequested == false)
+            {
+                if (numBytesRead >= _maxRxBufferSize) throw new IOException("buffer overflow");
+                token.ThrowIfCancellationRequested();
+
+                var newData = await _board.Uart.ReceiveAsync();
+                readBytes.Concat(newData.ToArray());
+
+                payloadLength = detectMessage(data);
+                if (payloadLength > 0)
+                {
+                    break;
+                }
+            }
+
+            token.ThrowIfCancellationRequested();
+            return readBytes.Take(payloadLength).ToArray();
         }
 
         public override async Task Send(ReadOnlyMemory<byte> writeBytes, CancellationToken token = default)
         {
-            throw new NotImplementedException();
+            var discard = await _board.Uart.ReceiveAsync(); // clear buffer
+            await _board.Uart.SendAsync(writeBytes.ToArray());
         }
     }
 }
