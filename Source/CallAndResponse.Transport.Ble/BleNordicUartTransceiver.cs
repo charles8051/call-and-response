@@ -20,16 +20,10 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.ComponentModel.Design.Serialization;
 
-namespace CallAndResponse.Transport.Ble
+namespace CallAndResponse.Transport.Net.Ble
 {
     public class BleNordicUartTransceiver : Transceiver
     {
-        //readonly string UartDeviceGuid = "00000000-0000-0000-0000-8065999482c6";
-        //readonly string DeviceName = "Datafeel El Jefe";
-        //readonly string UartSeviceGuidString = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-        //readonly string UartRxGuidString = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
-        //readonly string UartTxGuidString = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-
         private readonly Guid UartServiceGuid = Guid.Parse("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
         private readonly Guid UartRxGuid = Guid.Parse("6e400003-b5a3-f393-e0a9-e50e24dcca9e");
         private readonly Guid UartTxGuid = Guid.Parse("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
@@ -60,7 +54,6 @@ namespace CallAndResponse.Transport.Ble
         {
             
         }
-
         public BleNordicUartTransceiver(Guid id) : base()
         {
             _id = id;
@@ -311,15 +304,10 @@ namespace CallAndResponse.Transport.Ble
                 LogInformation("Device disconnected");
             }
         }
-
         private async Task Clear()
         {
             var discard = rxChannel.Reader.ReadAllAsync();
             //await foreach (var item in discard) { }
         }
-
-
-
-
     }
 }

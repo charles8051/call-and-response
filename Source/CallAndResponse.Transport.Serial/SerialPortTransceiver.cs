@@ -5,7 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
 
-namespace CallAndResponse.Transport.Serial
+namespace CallAndResponse.Transport.Net.Serial
 {
     public class SerialPortTransceiver : Transceiver
     {
@@ -17,8 +17,10 @@ namespace CallAndResponse.Transport.Serial
         public override bool IsOpen => _serialPort.IsOpen;
 
 
+
         public static SerialPortTransceiver CreateFromId(ushort vid, ushort pid, int baudRate, Parity parity, int dataBits, StopBits stopBits)
         {
+            // TODO: Limit to windows only
             string? portName = SerialPortUtils.FindPortNameById(vid, pid);
             if (portName is null)
             {
@@ -77,7 +79,7 @@ namespace CallAndResponse.Transport.Serial
 
                         numBytesRead += await _serialPort.BaseStream.ReadAsync(readBytes, numBytesRead, _maxRxBufferSize - numBytesRead , token);
 
-                        payloadLength = detectMessage(readBytes);
+                        payloadLength = detectMessage(readBytes.Take(numBytesRead).ToArray());
                         if (payloadLength > 0)
                         {
                             break;

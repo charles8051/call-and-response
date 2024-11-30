@@ -13,4 +13,12 @@
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <Authors>Charles Lee</Authors>
+    <Description>A transceiver adapter to use as a base for call and response communication protocols</Description>
+    <PackageTags>serial</PackageTags>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
 </Project>

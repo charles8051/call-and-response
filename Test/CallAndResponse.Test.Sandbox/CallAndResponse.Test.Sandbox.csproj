@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'" />
+  <PropertyGroup>
+
+    <DefineConstants>LOG_TRANSCEIVER_INFO</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Source\CallAndResponse.Protocol.Modbus\CallAndResponse.Protocol.Modbus.csproj" />
+    <ProjectReference Include="..\..\Source\CallAndResponse.Transport.Ble\CallAndResponse.Transport.Ble.csproj" />
+    <ProjectReference Include="..\..\Source\CallAndResponse.Transport.Serial\CallAndResponse.Transport.Serial.csproj" />
+    <ProjectReference Include="..\..\Source\CallAndResponse.Transport.Treehopper\CallAndResponse.Transport.Treehopper.csproj" />
+    <ProjectReference Include="..\..\Source\CallAndResponse\CallAndResponse.csproj" />
+  </ItemGroup>
+
+</Project>

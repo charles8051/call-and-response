@@ -17,4 +17,11 @@
     <ProjectReference Include="..\CallAndResponse\CallAndResponse.csproj" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <Authors>Charles Lee</Authors>
+    <PackageTags>ble bluetooth serial uart com</PackageTags>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
 </Project>
