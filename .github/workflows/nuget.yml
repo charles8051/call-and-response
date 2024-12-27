@@ -10,7 +10,7 @@ on:
 env:
   SOLUTION_PATH: 'CallAndResponse.sln'
   PACKAGE_OUTPUT_DIRECTORY: 'Output'
-  NUGET_SOURCE_URL: 'https://nuget.pkg.github.com/call-and-response/index.json'
+  NUGET_SOURCE_URL: 'https://nuget.pkg.github.com/clee781/call-and-response/index.json'
 
 jobs:
   deploy:
@@ -35,8 +35,17 @@ jobs:
       id: version
       uses: battila7/get-version-action@v2
 
-    - name: 'Pack project'
-      run: dotnet pack ${{ env.SOLUTION_PATH }} --no-restore --no-build --configuration Release --include-symbols -p:PackageVersion=${{ steps.version.outputs.version-without-v }} --output ${{ env.PACKAGE_OUTPUT_DIRECTORY }} -p:SymbolPackageFormat=snupkg
+    - name: 'Pack CallAndResponse'
+      run: dotnet pack Source/CallAndResponse/CallAndResponse.csproj --no-restore --no-build --configuration Release --include-symbols -p:PackageVersion=${{ steps.version.outputs.version-without-v }} --output ${{ env.PACKAGE_OUTPUT_DIRECTORY }} -p:SymbolPackageFormat=snupkg
+      
+    - name: 'Pack CallAndResponse'
+      run: dotnet pack Source/CallAndResponse.Protocol.Modbus/CallAndResponse.Protocol.Modbus.csproj --no-restore --no-build --configuration Release --include-symbols -p:PackageVersion=${{ steps.version.outputs.version-without-v }} --output ${{ env.PACKAGE_OUTPUT_DIRECTORY }} -p:SymbolPackageFormat=snupkg
+    
+    - name: 'Pack CallAndResponse'
+      run: dotnet pack Source/CallAndResponse.Transport.Ble/CallAndResponse.Transport.Ble.csproj --no-restore --no-build --configuration Release --include-symbols -p:PackageVersion=${{ steps.version.outputs.version-without-v }} --output ${{ env.PACKAGE_OUTPUT_DIRECTORY }} -p:SymbolPackageFormat=snupkg
+      
+    - name: 'Pack CallAndResponse'
+      run: dotnet pack Source/CallAndResponse.Transport.Serial/CallAndResponse.Transport.Serial.csproj --no-restore --no-build --configuration Release --include-symbols -p:PackageVersion=${{ steps.version.outputs.version-without-v }} --output ${{ env.PACKAGE_OUTPUT_DIRECTORY }} -p:SymbolPackageFormat=snupkg
 
-    # - name: 'Push package'
-    #   run: dotnet nuget push ${{ env.PACKAGE_OUTPUT_DIRECTORY }}\*.nupkg -k ${{ secrets.CALL_AND_RESPONSE_SECRET }} -s ${{ env.NUGET_SOURCE_URL }}
+    - name: 'Push package'
+      run: dotnet nuget push ${{ env.PACKAGE_OUTPUT_DIRECTORY }}\*.nupkg -k ${{ secrets.CALL_AND_RESPONSE_SECRET }} -s ${{ env.NUGET_SOURCE_URL }}
