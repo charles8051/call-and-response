@@ -35,7 +35,7 @@ jobs:
       uses: battila7/get-version-action@v2
 
     - name: 'Get Version'
-    - run: echo ${{ steps.get_version.outputs.version-without-v }}
+      run: echo ${{ steps.get_version.outputs.version-without-v }}
 
     - name: 'Pack CallAndResponse'
       run: dotnet pack Source/CallAndResponse/CallAndResponse.csproj --no-restore --no-build --configuration Release --include-symbols -p:PackageVersion=${{ steps.get_version.outputs.version-without-v }} --output ${{ env.PACKAGE_OUTPUT_DIRECTORY }} -p:SymbolPackageFormat=snupkg
