@@ -52,8 +52,9 @@ namespace CallAndResponse
         }
         public async Task<Memory<byte>> SendReceive(ReadOnlyMemory<byte> writeBytes, int numBytesExpected, CancellationToken token)
         {
-            var readable = writeBytes.ToArray().Select(b => $"{b:X}").ToArray();
-            LogInformation("Sending [{@WriteBytes}]", string.Join(',', readable));
+            var byteStrings = writeBytes.ToArray().Select(b => $"{b:X2}").ToArray();
+            var readable = string.Join(',', byteStrings);
+            LogInformation("Sending [{@WriteBytes}]", readable);
             await Send(writeBytes, token).ConfigureAwait(false);
             var payload = await ReceiveExactly(numBytesExpected, token).ConfigureAwait(false);
             LogInformation("Received [{@Payload}]", string.Join(',', payload.ToArray().Select(b => $"{b:X}").ToArray()));
@@ -61,7 +62,7 @@ namespace CallAndResponse
         }
         public async Task<Memory<byte>> SendReceive(ReadOnlyMemory<byte> writeBytes, ReadOnlyMemory<byte> terminatorPattern, CancellationToken token)
         {
-            var readable = writeBytes.ToArray().Select(b => $"{b:X}").ToArray();
+            var readable = writeBytes.ToArray().Select(b => $"{b:X2}").ToArray();
             LogInformation("Sending [{@writeBytes}]", string.Join(',', readable));
             await Send(writeBytes, token).ConfigureAwait(false);
             var payload = await ReceiveUntilTerminatorPattern(terminatorPattern, token).ConfigureAwait(false);
@@ -114,22 +115,22 @@ namespace CallAndResponse
                 .CreateLogger();
         }
 
-        [Conditional("DEBUG")]
+        [Conditional("TRACE_TRANSCEIVER")]
         protected void LogInformation(string message, params object[] args)
         {
-            _logger.Information(message, args);
+            //_logger.Information(message, args);
         }
 
-        [Conditional("DEBUG")]
+        [Conditional("TRACE_TRANSCEIVER")]
         protected void LogTrace(string message, params object[] args)
         {
-            _logger.Verbose(message, args);
+            //_logger.Verbose(message, args);
         }
 
-        [Conditional("DEBUG")]
+        [Conditional("TRACE_TRANSCEIVER")]
         protected void LogError(string message, params object[] args)
         {
-            _logger.Error(message, args);
+            //_logger.Error(message, args);
         }
 
         #endregion

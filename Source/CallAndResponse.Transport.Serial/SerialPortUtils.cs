@@ -1,8 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Management;
 
-namespace CallAndResponse.Transport.Net.Serial
+namespace CallAndResponse.Transport.Serial
 {
     public class SerialPortUtils
     {
@@ -36,7 +37,10 @@ namespace CallAndResponse.Transport.Net.Serial
 
             string pnpString = $"VID_{vid:X4}&PID_{pid:X4}";
 
-            var device = serialPortInfos.Find(device => device.PNPDeviceID == pnpString);
+            //var device = serialPortInfos.Find(device => device.PNPDeviceID == pnpString);
+            var device = serialPortInfos.Where(d => d.PNPDeviceID.Contains(pnpString)).FirstOrDefault();
+
+
             if (device != null)
             {
                 return device.SerialPort;

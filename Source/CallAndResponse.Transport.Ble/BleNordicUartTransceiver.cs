@@ -20,7 +20,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.ComponentModel.Design.Serialization;
 
-namespace CallAndResponse.Transport.Net.Ble
+namespace CallAndResponse.Transport.Ble
 {
     public class BleNordicUartTransceiver : Transceiver
     {
@@ -140,7 +140,7 @@ namespace CallAndResponse.Transport.Net.Ble
         {
             if (IsOpen == false)
             {
-                throw new TransceiverTransportException("Cannot read while disconnected");
+                throw new TransceiverTransportException("Cannot write while disconnected");
             }
 
             try
@@ -308,6 +308,7 @@ namespace CallAndResponse.Transport.Net.Ble
         {
             var discard = rxChannel.Reader.ReadAllAsync();
             //await foreach (var item in discard) { }
+            // TODO fix this
         }
     }
 }

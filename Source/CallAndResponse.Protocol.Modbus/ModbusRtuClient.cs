@@ -1,4 +1,7 @@
-﻿using System;
+﻿using Serilog;
+using Serilog.Events;
+using Serilog.Sinks.SystemConsole.Themes;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -9,9 +12,23 @@ namespace CallAndResponse.Protocol.Modbus
     public class ModbusRtuClient : IModbusClient
     {
         private ITransceiver _transceiver;
+        private ILogger _logger;
+
+        private ILogger CreateDefaultLogger()
+        {
+            return new LoggerConfiguration()
+                .Enrich.FromLogContext()
+                .WriteTo.Console(theme: SystemConsoleTheme.Literate,
+                    restrictedToMinimumLevel: LogEventLevel.Information,
+                    outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level}] ({SourceContext}.{Method}) {Message}{NewLine}{Exception}")
+                .CreateLogger();
+        }
+
         public ModbusRtuClient(ITransceiver transceiver)
         {
             _transceiver = transceiver;
+
+            _logger = CreateDefaultLogger();
         }
 
         public async Task Open(CancellationToken token = default)
