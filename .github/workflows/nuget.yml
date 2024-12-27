@@ -4,14 +4,11 @@ on:
   push:
     tags:
     - 'v*'
-    
 
 env:
   SOLUTION_PATH: 'Source/CallAndResponse.sln'
   PACKAGE_OUTPUT_DIRECTORY: ${{ github.workspace }}\Output
   NUGET_SOURCE_URL: 'https://nuget.pkg.github.com/call-and-response/index.json'
-#   NUGET_SOURCE_URL: 'https://api.nuget.org/v3/index.json'
-
 
 jobs:
   deploy:
