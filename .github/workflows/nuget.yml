@@ -2,8 +2,6 @@ name: "Deploy to NuGet"
 
 on: 
     push:
-        branches:
-        - nuget
         tags:
         - 'v*'
 
@@ -50,4 +48,4 @@ jobs:
       run: dotnet pack Source/CallAndResponse.Transport.Serial/CallAndResponse.Transport.Serial.csproj --no-restore --no-build --configuration Release --include-symbols -p:PackageVersion=${{ steps.get_version.outputs.version-without-v }} --output ${{ env.PACKAGE_OUTPUT_DIRECTORY }} -p:SymbolPackageFormat=snupkg
 
     - name: 'Push packages'
-      run: dotnet nuget push ${{ env.PACKAGE_OUTPUT_DIRECTORY }}\*.nupkg -k ${{ secrets.CALL_AND_RESPONSE_SECRET }} -s ${{ env.NUGET_SOURCE_URL }}
+      run: dotnet nuget push ${{ env.PACKAGE_OUTPUT_DIRECTORY }}\*.nupkg -k ${{ secrets.GITHUB_TOKEN }} -s ${{ env.NUGET_SOURCE_URL }}
