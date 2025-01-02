@@ -1,11 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.1</TargetFramework>
-    <!--<GeneratePackageOnBuild>True</GeneratePackageOnBuild>-->
+    <TargetFrameworks>netstandard2.0;netstandard2.1</TargetFrameworks>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <LangVersion>9.0</LangVersion>
     <!--<PackageOutputPath>..\..\Output</PackageOutputPath>-->
-    <Nullable>enable</Nullable>
   </PropertyGroup>
+
 
   <ItemGroup>
     <ProjectReference Include="..\CallAndResponse\CallAndResponse.csproj" />
@@ -13,6 +14,7 @@
 
   <PropertyGroup>
     <Authors>Charles Lee</Authors>
+    <Description>A Modbus API using the CallAndResponse Transceiver</Description>
     <PackageTags>serial modbus</PackageTags>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>

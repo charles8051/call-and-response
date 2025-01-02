@@ -1,11 +1,12 @@
 ﻿using System;
 using System.IO;
-using System.IO.Ports;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Serilog;
+
+using System.IO.Ports;
 
 namespace CallAndResponse.Transport.Serial
 {

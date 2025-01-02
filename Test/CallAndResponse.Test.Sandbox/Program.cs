@@ -2,9 +2,10 @@
 using CallAndResponse;
 using CallAndResponse.Protocol.Modbus;
 using CallAndResponse.Transport.Serial;
+using CallAndResponse.Transport.Ble;
 
-var transceiver = WindowsSerialPortTransceiver.CreateCP210xTransceiver();
-using (var cts = new CancellationTokenSource(5000))
+var transceiver = new BleNordicUartTransceiver();
+using (var cts = new CancellationTokenSource(10000))
 {
     try
     {
@@ -15,7 +16,7 @@ using (var cts = new CancellationTokenSource(5000))
     }
 }
 
-var modbusClient = new ModbusRtuClient(transceiver);
+//var modbusClient = new ModbusRtuClient(transceiver);
 while (true)
 {
     var delayTask = Task.Delay(1000);

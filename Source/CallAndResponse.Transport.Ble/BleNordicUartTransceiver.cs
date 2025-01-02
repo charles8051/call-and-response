@@ -255,7 +255,8 @@ namespace CallAndResponse.Transport.Ble
                         var d5 = guidData.Slice(5, 1).ToArray().FirstOrDefault();
                         var d6 = guidData.Slice(6, 1).ToArray().FirstOrDefault();
                         var d7 = guidData.Slice(7, 1).ToArray().FirstOrDefault();
-                        var uuid = new Guid(BitConverter.ToUInt32(a), BitConverter.ToUInt16(b), BitConverter.ToUInt16(c), d7, d6, d5, d4, d3, d2, d1, d0);
+
+                        var uuid = new Guid(BitConverter.ToUInt32(a, 0), BitConverter.ToUInt16(b, 0), BitConverter.ToUInt16(c, 0), d7, d6, d5, d4, d3, d2, d1, d0);
 
                         if (uuid.Equals(UartServiceGuid))
                         {
@@ -306,7 +307,7 @@ namespace CallAndResponse.Transport.Ble
         }
         private async Task Clear()
         {
-            var discard = rxChannel.Reader.ReadAllAsync();
+            //var discard = rxChannel.Reader.ReadAllAsync();
             //await foreach (var item in discard) { }
             // TODO fix this
         }
