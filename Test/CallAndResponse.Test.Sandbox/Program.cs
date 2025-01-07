@@ -4,7 +4,10 @@ using CallAndResponse.Protocol.Modbus;
 using CallAndResponse.Transport.Serial;
 using CallAndResponse.Transport.Ble;
 
-var transceiver = new BleNordicUartTransceiver();
+//var transceiver = new BleNordicUartTransceiver();
+//var transceiver = new TransceiverProvider().CreateSerialTransceiver("COM10");
+//var transceiver = new TransceiverProvider().CreateBleTransceiver();
+var transceiver = new TransceiverFactory().CreateWindowsSerialTransceiver(0x0000, 0x0000);
 using (var cts = new CancellationTokenSource(10000))
 {
     try
