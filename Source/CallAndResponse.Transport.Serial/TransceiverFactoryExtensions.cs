@@ -15,5 +15,6 @@ namespace CallAndResponse.Transport.Serial
         {
             return new WindowsSerialPortTransceiver(vid, pid);
         }
+
     }
 }

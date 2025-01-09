@@ -23,7 +23,6 @@ namespace CallAndResponse
 
         public Transceiver()
         {
-            _logger = CreateDefaultLogger();
         }
         public Transceiver(ILogger logger)
         {
@@ -105,32 +104,23 @@ namespace CallAndResponse
                 return readBytes.Length == numBytesExpected ? numBytesExpected : 0;
             }, token).ConfigureAwait(false);
         }
-        protected ILogger CreateDefaultLogger()
-        {
-            return new LoggerConfiguration()
-                .Enrich.FromLogContext()
-                .WriteTo.Console(theme: SystemConsoleTheme.Literate,
-                    restrictedToMinimumLevel: LogEventLevel.Information,
-                    outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level}] ({SourceContext}.{Method}) {Message}{NewLine}{Exception}")
-                .CreateLogger();
-        }
 
-        [Conditional("TRACE_TRANSCEIVER")]
         protected void LogInformation(string message, params object[] args)
         {
-            //_logger.Information(message, args);
+            if (_logger is null) return;
+            _logger.Information(message, args);
         }
 
-        [Conditional("TRACE_TRANSCEIVER")]
         protected void LogTrace(string message, params object[] args)
         {
-            //_logger.Verbose(message, args);
+            if (_logger is null) return;
+            _logger.Verbose(message, args);
         }
 
-        [Conditional("TRACE_TRANSCEIVER")]
         protected void LogError(string message, params object[] args)
         {
-            //_logger.Error(message, args);
+            if (_logger is null) return;
+            _logger.Error(message, args);
         }
 
         #endregion
