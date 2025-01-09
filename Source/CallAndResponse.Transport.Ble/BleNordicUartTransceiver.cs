@@ -50,13 +50,16 @@ namespace CallAndResponse.Transport.Ble
         //public int ReadTimeout { get; set; } = 500;
         //public int WriteTimeout { get; set; } = 500;
 
-        public BleNordicUartTransceiver() : base()
+        public BleNordicUartTransceiver(ILogger logger)
         {
-            
+            _logger = logger;
         }
         public BleNordicUartTransceiver(Guid id) : base()
         {
             _id = id;
+        }
+        public BleNordicUartTransceiver()
+        {
         }
 
         public override async Task Open(CancellationToken token = default)
@@ -293,7 +296,7 @@ namespace CallAndResponse.Transport.Ble
                 await rxChannel.Writer.WriteAsync(b);
             }
 
-            LogTrace("Received notification of {ByteLength} bytes from BLE server: ", data.Length);
+            LogInformation("Received notification of {ByteLength} bytes from BLE server: ", data.Length);
         }
 
         protected void DeviceDisconnectedHandler(object source, DeviceEventArgs args)
