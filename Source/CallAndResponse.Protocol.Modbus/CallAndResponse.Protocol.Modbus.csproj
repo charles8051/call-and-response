@@ -4,7 +4,8 @@
     <TargetFrameworks>netstandard2.0;netstandard2.1</TargetFrameworks>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <LangVersion>9.0</LangVersion>
-    <!--<PackageOutputPath>..\..\Output</PackageOutputPath>-->
+    <PackageOutputPath>..\..\Output</PackageOutputPath>
+    <PackageVersion>1.2.0-alpha</PackageVersion>
   </PropertyGroup>
 
 

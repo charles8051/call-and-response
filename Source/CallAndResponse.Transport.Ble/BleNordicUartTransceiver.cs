@@ -75,6 +75,8 @@ namespace CallAndResponse.Transport.Ble
                     uartDevice = await Scan(token);
                     if (uartDevice is null) throw new TransceiverConnectionException("Device not found");
                     LogInformation("Device found with UART Service");
+                    await adapter.ConnectToDeviceAsync(uartDevice, default ,token);
+                    LogInformation("Device connected");
                 } else
                 {
                     uartDevice = await adapter.ConnectToKnownDeviceAsync(_id, default, token);
@@ -103,6 +105,7 @@ namespace CallAndResponse.Transport.Ble
 
                 uartRx.ValueUpdated += RxNotificationHandler;
                 await uartRx.StartUpdatesAsync();
+                await Task.Delay(2000); // will miss some events if we don't do this
             }
             catch (Exception e)
             {
@@ -310,6 +313,10 @@ namespace CallAndResponse.Transport.Ble
         }
         private async Task Clear()
         {
+            while (rxChannel.Reader.Count > 0)
+            {
+                var _ = await rxChannel.Reader.ReadAsync();
+            }
             //var discard = rxChannel.Reader.ReadAllAsync();
             //await foreach (var item in discard) { }
             // TODO fix this
