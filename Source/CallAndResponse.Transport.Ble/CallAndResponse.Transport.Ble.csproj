@@ -5,7 +5,7 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <LangVersion>9.0</LangVersion>
     <PackageOutputPath>..\..\Output</PackageOutputPath>
-    <PackageVersion>1.2.0-alpha</PackageVersion>
+    <PackageVersion>1.2.1-alpha</PackageVersion>
   </PropertyGroup>
 
   <ItemGroup>

@@ -50,7 +50,7 @@ namespace CallAndResponse.Transport.Serial
             _parity = parity;
             _dataBits = dataBits;
             _stopBits = stopBits;
-            _logger = logger;
+            Logger = logger;
         }
 
         public override async Task Open(CancellationToken token)

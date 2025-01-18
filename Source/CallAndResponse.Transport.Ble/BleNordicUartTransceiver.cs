@@ -52,7 +52,7 @@ namespace CallAndResponse.Transport.Ble
 
         public BleNordicUartTransceiver(ILogger logger)
         {
-            _logger = logger;
+            Logger = logger;
         }
         public BleNordicUartTransceiver(Guid id) : base()
         {
@@ -71,12 +71,12 @@ namespace CallAndResponse.Transport.Ble
 
                 if(_id == Guid.Empty)
                 {
-                    LogInformation("Searching for device");
+                    Logger.Information("Searching for device");
                     uartDevice = await Scan(token);
                     if (uartDevice is null) throw new TransceiverConnectionException("Device not found");
-                    LogInformation("Device found with UART Service");
+                    Logger.Information("Device found with UART Service");
                     await adapter.ConnectToDeviceAsync(uartDevice, default ,token);
-                    LogInformation("Device connected");
+                    Logger.Information("Device connected");
                 } else
                 {
                     uartDevice = await adapter.ConnectToKnownDeviceAsync(_id, default, token);
@@ -94,9 +94,9 @@ namespace CallAndResponse.Transport.Ble
 
                 uartDevice.UpdateConnectionInterval(ConnectionInterval.High);
 
-                LogInformation("Request MTU: {@MtuRequest}", MtuRequest);
+                Logger.Information("Request MTU: {@MtuRequest}", MtuRequest);
                 var mtuActual = await uartDevice.RequestMtuAsync(MtuRequest);
-                LogInformation("Actual MTU: {@MtuActual}", mtuActual);
+                Logger.Information("Actual MTU: {@MtuActual}", mtuActual);
 
                 uartTx.WriteType = CharacteristicWriteType.WithoutResponse;
 
@@ -109,7 +109,7 @@ namespace CallAndResponse.Transport.Ble
             }
             catch (Exception e)
             {
-                LogError("Open(): " + e.Message, e);
+                Logger.Error("Open(): " + e.Message, e);
                 _isConnected = false;
                 if (uartRx != null)
                 {
@@ -134,7 +134,7 @@ namespace CallAndResponse.Transport.Ble
             }
             catch (Exception e)
             {
-                LogError(e.Message);
+                Logger.Error(e.Message);
             }
             finally
             {
@@ -165,12 +165,12 @@ namespace CallAndResponse.Transport.Ble
             }
             catch (OperationCanceledException e) when (token.IsCancellationRequested)
             {
-                LogError("Send(): " + e.Message, e);
+                Logger.Error("Send(): " + e.Message, e);
                 throw;
             }
             catch (Exception e)
             {
-                LogError("Send(): " + e.Message, e);
+                Logger.Error("Send(): " + e.Message, e);
                 throw;
             }
         }
@@ -179,7 +179,7 @@ namespace CallAndResponse.Transport.Ble
         {
             if (IsOpen == false)
             {
-                LogError("Cannot read while disconnected");
+                Logger.Error("Cannot read while disconnected");
                 throw new TransceiverTransportException("Cannot read while disconnected");
             }
 
@@ -238,8 +238,8 @@ namespace CallAndResponse.Transport.Ble
 
             void deviceDiscovered(object sender, DeviceEventArgs args)
             {
-                LogInformation("Device Found: {@DeviceName}", args.Device.Name);
-                LogInformation("Device Availability: {DeviceAvailability}", args.Device.State);
+                Logger.Information("Device Found: {@DeviceName}", args.Device.Name);
+                Logger.Information("Device Availability: {DeviceAvailability}", args.Device.State);
                 
                 var records = args.Device.AdvertisementRecords;
                 foreach (var record in records)
@@ -266,7 +266,7 @@ namespace CallAndResponse.Transport.Ble
 
                         if (uuid.Equals(UartServiceGuid))
                         {
-                            LogInformation("Found device with Nordic UART Service. Id: {@DeviceId}", args.Device.Id);
+                            Logger.Information("Found device with Nordic UART Service. Id: {@DeviceId}", args.Device.Id);
                         }
                         adapter.DeviceDiscovered -= deviceDiscovered;
                         linkedCancelSource.Cancel();
@@ -277,14 +277,14 @@ namespace CallAndResponse.Transport.Ble
 
             token.Register(() =>
             {
-                LogInformation("Scan cancelled by caller");
+                Logger.Information("Scan cancelled by caller");
                 adapter.DeviceDiscovered -= deviceDiscovered;
                 tcs.TrySetException(new OperationCanceledException());
             });
 
             adapter.DeviceDiscovered += deviceDiscovered;
             adapter.ScanMode = ScanMode.LowLatency;
-            LogInformation("Scanning for device with Nordic UART Service");
+            Logger.Information("Scanning for device with Nordic UART Service");
             await adapter.StartScanningForDevicesAsync(linkedCancelSource.Token);
 
             return await tcs.Task;
@@ -299,7 +299,7 @@ namespace CallAndResponse.Transport.Ble
                 await rxChannel.Writer.WriteAsync(b);
             }
 
-            LogInformation("Received notification of {ByteLength} bytes from BLE server: ", data.Length);
+            Logger.Information("Received notification of {ByteLength} bytes from BLE server: ", data.Length);
         }
 
         protected void DeviceDisconnectedHandler(object source, DeviceEventArgs args)
@@ -308,7 +308,7 @@ namespace CallAndResponse.Transport.Ble
             {
                 _isConnected = false;
                 CrossBluetoothLE.Current.Adapter.DeviceDisconnected -= DeviceDisconnectedHandler;
-                LogInformation("Device disconnected");
+                Logger.Information("Device disconnected");
             }
         }
         private async Task Clear()
