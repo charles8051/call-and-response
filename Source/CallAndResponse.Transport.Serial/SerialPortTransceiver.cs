@@ -43,14 +43,13 @@ namespace CallAndResponse.Transport.Serial
         //    }
         //    return new SerialPortTransceiver(portName, baudRate, parity, dataBits, stopBits);
         //}
-        public SerialPortTransceiver(string portName, int baudRate = 115200, Parity parity = Parity.None, int dataBits = 8, StopBits stopBits = StopBits.One, ILogger logger = null)
+        public SerialPortTransceiver(string portName, int baudRate = 115200, Parity parity = Parity.None, int dataBits = 8, StopBits stopBits = StopBits.One)
         {
             _portName = portName;
             _baudRate = baudRate;
             _parity = parity;
             _dataBits = dataBits;
             _stopBits = stopBits;
-            Logger = logger;
         }
 
         public override async Task Open(CancellationToken token)
