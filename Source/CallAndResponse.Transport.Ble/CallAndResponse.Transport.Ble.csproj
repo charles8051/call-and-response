@@ -25,4 +25,10 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <PackageOutputPath>..\..\Output\Debug</PackageOutputPath>
+    <PackageVersion>1.2.2-alpha</PackageVersion>
+  </PropertyGroup>
+
 </Project>

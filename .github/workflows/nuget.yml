@@ -7,7 +7,7 @@ on:
 
 env:
   SOLUTION_PATH: 'CallAndResponse.sln'
-  PACKAGE_OUTPUT_DIRECTORY: 'Output'
+  PACKAGE_OUTPUT_DIRECTORY: 'Output/Release'
   NUGET_SOURCE_URL: 'https://api.nuget.org/v3/index.json'
   GITHUB_SOURCE_URL: 'https://nuget.pkg.github.com/clee781/index.json'
 
@@ -49,7 +49,7 @@ jobs:
       run: dotnet pack Source/CallAndResponse.Transport.Serial/CallAndResponse.Transport.Serial.csproj --no-restore --no-build --configuration Release --include-symbols -p:PackageVersion=${{ steps.get_version.outputs.version-without-v }} --output ${{ env.PACKAGE_OUTPUT_DIRECTORY }} -p:SymbolPackageFormat=snupkg
 
     - name: 'Push packages to GitHub'
-      run: dotnet nuget push ${{ env.PACKAGE_OUTPUT_DIRECTORY }}\*.nupkg -k ${{ secrets.CALL_AND_RESPONSE_SECRET }} -s ${{ env.GITHUB_SOURCE_URL }}
+      run: dotnet nuget push ${{ env.PACKAGE_OUTPUT_DIRECTORY }}/**\*.nupkg -k ${{ secrets.CALL_AND_RESPONSE_SECRET }} -s ${{ env.GITHUB_SOURCE_URL }} --skip-duplicate
 
     - name: 'Push packages to NuGet Gallery'
-      run: dotnet nuget push ${{ env.PACKAGE_OUTPUT_DIRECTORY }}\*.nupkg -k ${{ secrets.NUGET_KEY }} -s ${{ env.NUGET_SOURCE_URL }}
+      run: dotnet nuget push ${{ env.PACKAGE_OUTPUT_DIRECTORY }}/**\*.nupkg -k ${{ secrets.NUGET_KEY }} -s ${{ env.NUGET_SOURCE_URL }} --skip-duplicate
