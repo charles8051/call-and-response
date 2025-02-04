@@ -2,10 +2,10 @@
 
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;netstandard2.1</TargetFrameworks>
-    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\CallAndResponse.Transport.Serial\CallAndResponse.Transport.Serial.csproj" />
     <ProjectReference Include="..\CallAndResponse\CallAndResponse.csproj" />
   </ItemGroup>
 

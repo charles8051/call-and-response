@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CallAndResponse;
+using CallAndResponse.Transport.Serial;
 
 namespace CallAndResponse.Protocol.Stm32Bootloader
 {
@@ -29,21 +30,26 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             await _transceiver.Open(token);
         }
 
-        public async Task<bool> Ping(CancellationToken token = default)
+        public async Task Close(CancellationToken token = default)
         {
-            var result = await _transceiver.SendReceive(new byte[] { 0x7F }, 1, token);
-            if (result.Span[0] == Ack)
-            {
-                return true;
-            }
-            else if (result.Span[0] == Nack)
-            {
-                return false;
-            }
-            else
-            {
-                throw new OperationCanceledException();
-            }
+            await _transceiver.Close(token);
+        }
+
+
+        public async Task WriteFlash(uint address, ReadOnlyMemory<byte> data, CancellationToken token = default)
+        {
+            // Initiate command
+            await _transceiver.SendReceive(new byte[] { (byte)Stm32BootloaderCommand.WriteMemory, 0xCE }, new byte[] { Ack }, token);
+            var addressBytes = BitConverter.GetBytes(address);
+            var checksum = (byte)(addressBytes[0] ^ addressBytes[1] ^ addressBytes[2] ^ addressBytes[3]);
+            var sendBytes = addressBytes.ToList();
+            sendBytes.Add(checksum);
+            await _transceiver.SendReceive(sendBytes.ToArray(), new byte[] { Ack }, token);
+            var length = (byte)data.Length;
+            var byteLengthChecksum = (byte)(length ^ (byte)(~length));
+            await _transceiver.SendReceive(new byte[] { length, byteLengthChecksum }, new byte[] { Ack }, token);
+            var dataChecksum = (byte)data.Span.ToArray().Aggregate((byte)0, (acc, b) => (byte)(acc ^ b));
+            await _transceiver.SendReceive(data.ToArray(), new byte[] { dataChecksum }, token);
         }
 
         public async Task<Stm32ProtocolInfo> GetSupportedCommands(CancellationToken token = default)
@@ -62,6 +68,23 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             return new Stm32ProtocolInfo(result.Span[1], supportedCommands);
         }
 
+        public async Task<bool> Ping(CancellationToken token = default)
+        {
+            var result = await _transceiver.SendReceive(new byte[] { 0x7F }, 1, token);
+            if (result.Span[0] == Ack)
+            {
+                return true;
+            }
+            else if (result.Span[0] == Nack)
+            {
+                return false;
+            }
+            else
+            {
+                throw new OperationCanceledException();
+            }
+        }
+
         public async Task<byte> Special(CancellationToken token = default)
         {
             var result = await _transceiver.SendReceive(new byte[] { (byte)Stm32BootloaderCommand.Special, 0xAF }, 1, token);
@@ -76,34 +99,13 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         public async Task<byte> GetId(CancellationToken token = default)
         {
             var result = await _transceiver.SendReceive(new byte[] { (byte)Stm32BootloaderCommand.GetId, 0xFD }, new byte[] { Ack }, new byte[] { Ack }, token);
+            //var result = await _transceiver.SendReceive(new byte[] { (byte)Stm32BootloaderCommand.GetId, 0xFD }, 5, token);
 
-            return result.Span[2];
+            return result.Span[4];
         }
 
         public async Task<ReadOnlyMemory<byte>> ReadMemory(uint address, byte length, CancellationToken token = default)
         {
-            //            The host sends bytes to the STM32 as follows:
-            //Send ACK byte
-            //Start GID(1)
-            //Received
-            //byte = 0x02 + 0xFD ?
-            //Send N = number of bytes – 1
-            //End of GID(1)
-            //No
-            //Yes
-            //ai14636
-            //Send NACK byte
-            //Send ACK byte
-            //Send product ID
-            //Bytes 1 - 2: 0x11 + 0xEE
-            //Wait for ACK
-            //Bytes 3 to 6 Start address byte 3: MSB, byte 6: LSB
-            //Byte 7: Checksum: XOR(byte 3, byte 4, byte 5, byte 6)
-            //Wait for ACK
-            //Byte 8: The number of bytes to be read – 1(0 < N ≤ 255);
-            //            Byte 9: Checksum: XOR byte 8(complement of byte 8)
-
-
             // Initiate command
             await _transceiver.SendReceive(new byte[] { (byte)Stm32BootloaderCommand.ReadMemory, 0xEE }, new byte[] { Ack }, token);
 
@@ -118,7 +120,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             var byteLengthChecksum = (byte)(length ^ (byte)(~length));
             await _transceiver.SendReceive( new byte[] { length, byteLengthChecksum }, new byte[] { Ack }, token);
 
-            
+            return await _transceiver.ReceiveExactly(length + 1, token);
         }
 
         public async Task Go(CancellationToken token = default)
