@@ -14,7 +14,8 @@ namespace CallAndResponse
         Task<string> SendReceive(string writeString, char terminator, CancellationToken token);
         Task<string> SendReceive(string writeString, string terminator, CancellationToken token);
         Task<Memory<byte>> SendReceive(ReadOnlyMemory<byte> writeBytes, int numBytesExpected, CancellationToken token);
-        Task<Memory<byte>> SendReceive(ReadOnlyMemory<byte> writeBytes, ReadOnlyMemory<byte> pattern, CancellationToken token);
+        Task<Memory<byte>> SendReceive(ReadOnlyMemory<byte> writeBytes, ReadOnlyMemory<byte> footer, CancellationToken token);
+        Task<Memory<byte>> SendReceive(ReadOnlyMemory<byte> writeBytes, ReadOnlyMemory<byte> header, ReadOnlyMemory<byte> footer, CancellationToken token);
         Task<Memory<byte>> SendReceive(ReadOnlyMemory<byte> writeBytes, Func<ReadOnlyMemory<byte>, int> detectMessage, CancellationToken token);
     }
 }
