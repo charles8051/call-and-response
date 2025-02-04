@@ -30,13 +30,12 @@ var anotherLogger = new LoggerConfiguration()
 var transceiver = new WindowsSerialPortTransceiver(0x10c4, 0xea60, parity: System.IO.Ports.Parity.Even);
 var client = new Stm32BootloaderClient(transceiver);
 
-using (var cts = new CancellationTokenSource(10000))
+using (var cts = new CancellationTokenSource(5000))
 {
     try
     {
         //await transceiver.Open(cts.Token);
-
-        await client.Open();
+        await client.Open(cts.Token);
     } catch(Exception e)
     {
         Console.WriteLine(e.Message);
@@ -51,27 +50,27 @@ using (var cts = new CancellationTokenSource(10000))
 //    {
 //        using (var cts = new CancellationTokenSource(250))
 //        {
-//            var result = await transceiver.SendReceive(new byte[] { 0xff, 0xAA, 0xAA, 0xDD, 0xDD, 0xBB, 0xBB }, new byte[] { 0xAA }, new byte[] { 0xBB }, cts.Token);
+//            var result = await transceiver.SendReceivePerfectMatch(new byte[] { 0xAA }, new byte[] { 0xAA }, cts.Token);
 //            Console.WriteLine(ToReadableByteArray(result.ToArray()));
 //        }
 //    }
-//    catch(Exception e)
+//    catch (Exception e)
 //    {
 //        Console.WriteLine(e.Message);
 //    }
 //}
-
-
-
 
 using (var cts = new CancellationTokenSource(5000))
 {
     try
     {
         await client.Ping(cts.Token);
-        await Task.Delay(1000);
+        await Task.Delay(500);
         var id = await client.GetId(cts.Token);
         Console.WriteLine($"Id: {id}");
+        await Task.Delay(500);
+        var data = await client.ReadMemory(0x08000000, 16, cts.Token);
+        Console.WriteLine(ToReadableByteArray(data.ToArray()));
     }
     catch (Exception e)
     {
