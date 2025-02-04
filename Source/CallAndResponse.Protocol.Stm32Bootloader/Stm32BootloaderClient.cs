@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -35,22 +36,6 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             await _transceiver.Close(token);
         }
 
-
-        public async Task WriteFlash(uint address, ReadOnlyMemory<byte> data, CancellationToken token = default)
-        {
-            // Initiate command
-            await _transceiver.SendReceiveFooter(new byte[] { (byte)Stm32BootloaderCommand.WriteMemory, 0xCE }, new byte[] { Ack }, token);
-            var addressBytes = BitConverter.GetBytes(address);
-            var checksum = (byte)(addressBytes[0] ^ addressBytes[1] ^ addressBytes[2] ^ addressBytes[3]);
-            var sendBytes = addressBytes.ToList();
-            sendBytes.Add(checksum);
-            await _transceiver.SendReceiveFooter(sendBytes.ToArray(), new byte[] { Ack }, token);
-            var length = (byte)data.Length;
-            var byteLengthChecksum = (byte)(length ^ (byte)(~length));
-            await _transceiver.SendReceiveFooter(new byte[] { length, byteLengthChecksum }, new byte[] { Ack }, token);
-            var dataChecksum = (byte)data.Span.ToArray().Aggregate((byte)0, (acc, b) => (byte)(acc ^ b));
-            await _transceiver.SendReceiveFooter(data.ToArray(), new byte[] { dataChecksum }, token);
-        }
 
         public async Task<Stm32ProtocolInfo> GetSupportedCommands(CancellationToken token = default)
         {
@@ -98,14 +83,30 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
 
         public async Task<byte> GetId(CancellationToken token = default)
         {
-            var result = await _transceiver.SendReceiveHeaderFooter(new byte[] { (byte)Stm32BootloaderCommand.GetId, 0xFD }, new byte[] { Ack }, new byte[] { Ack }, token);
-            //var result = await _transceiver.SendReceive(new byte[] { (byte)Stm32BootloaderCommand.GetId, 0xFD }, 5, token);
+            //var result = await _transceiver.SendReceiveHeaderFooter(new byte[] { (byte)Stm32BootloaderCommand.GetId, 0xFD }, new byte[] { Ack }, new byte[] { Ack }, token);
+            var result = await _transceiver.SendReceiveExactly(new byte[] { (byte)Stm32BootloaderCommand.GetId, 0xFD }, 5, token);
 
-            return result.Span[2];
+            return result.Span[4];
         }
 
-        public async Task<ReadOnlyMemory<byte>> ReadMemory(uint address, byte length, CancellationToken token = default)
+        public async Task<ReadOnlyMemory<byte>> ReadMemory(uint address, uint length, CancellationToken token = default)
         {
+            var result = new List<byte>();
+            while (length > 0)
+            {
+                var readLength = Math.Min(length, 256);
+                var data = await Read256(address, readLength, token);
+                result.AddRange(data.ToArray());
+                address += readLength;
+                length -= readLength;
+            }
+            return result.ToArray();
+        }
+
+        public async Task<ReadOnlyMemory<byte>> Read256(uint address, uint length, CancellationToken token = default)
+        {
+            if (length > 256) throw new ArgumentException();
+
             // Initiate command
             await _transceiver.SendReceiveExactly(new byte[] { (byte)Stm32BootloaderCommand.ReadMemory, 0xEE }, 1, token);
 
@@ -117,18 +118,71 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
 
             await _transceiver.SendReceiveExactly(sendBytes.ToArray(), 1, token);
 
-            var byteLengthChecksum = (byte)(length ^ 0xFF);
-            var result = await _transceiver.SendReceiveExactly( new byte[] { length, byteLengthChecksum }, length + 1, token);
+            var byteLengthChecksum = (byte)((length-1) ^ 0xFF);
+            var result = await _transceiver.SendReceiveExactly( new byte[] { (byte)(length-1), byteLengthChecksum }, (int)length + 1, token);
             return result.Slice(1);
         }
 
-        public async Task Go(CancellationToken token = default)
-        {
-            throw new NotImplementedException();
-        }
         public async Task WriteMemory(uint address, ReadOnlyMemory<byte> data, CancellationToken token = default)
         {
-            throw new NotImplementedException();
+            var numBytesWritten = 0;
+            var numBytes = data.Length;
+            while(numBytes > 0)
+            {
+                var writeLength = Math.Min(numBytes, 256);
+                await Write256(address, data.Slice(numBytesWritten, writeLength), token);
+                numBytesWritten += (int)writeLength;
+                numBytes -= writeLength;
+                address += (uint)writeLength;
+            }
+        }
+        public async Task Write256(uint address, ReadOnlyMemory<byte> data, CancellationToken token = default)
+        {
+            if(data.Length > 256)
+            {
+                throw new ArgumentException("Data length must be less than or equal to 256 bytes");
+            }
+
+            await _transceiver.SendReceivePerfectMatch(new byte[] { (byte)Stm32BootloaderCommand.WriteMemory, 0xCE }, new byte[] { Ack }, token);
+
+            var addressBytes = BitConverter.GetBytes(address).Reverse().ToArray();
+            var checksum = (byte)(addressBytes[0] ^ addressBytes[1] ^ addressBytes[2] ^ addressBytes[3]);
+            var sendBytes = addressBytes.ToList();
+            sendBytes.Add(checksum);
+            await _transceiver.SendReceivePerfectMatch(sendBytes.ToArray(), new byte[] { Ack }, token);
+
+            var length = (byte)(data.Length-1);
+            //var byteLengthChecksum = (byte)(length ^ 0xff);
+            //var dataChecksum = (byte)data.Span.ToArray().Aggregate((byte)0, (acc, b) => (byte)(acc ^ b));
+            byte dataChecksum = (byte)(~(ComputeChecksum(data.ToArray()) ^ (byte)length));
+
+            sendBytes = new List<byte> { length };
+            sendBytes.AddRange(data.ToArray());
+            sendBytes.Add(dataChecksum);
+
+            await _transceiver.SendReceivePerfectMatch(sendBytes.ToArray(), new byte[] { Ack }, token);
+        }
+
+        private byte ComputeChecksum(byte[] data)
+        {
+            /* initial value */
+            byte xor = 0xff;
+            /* compute */
+            for (int i = 0; i < data.Length; i++)
+                xor ^= data[i];
+
+            /* return value */
+            return xor;
+        }
+
+        public async Task Go(uint jumpAddress, CancellationToken token = default)
+        {
+            await _transceiver.SendReceivePerfectMatch(new byte[] { (byte)Stm32BootloaderCommand.Go, 0xDE }, new byte[] { Ack }, token);
+
+            var addressBytes = BitConverter.GetBytes(jumpAddress).Reverse().ToArray();
+            byte addressChecksumByte = (byte)(addressBytes[0] ^ addressBytes[1] ^ addressBytes[2] ^ addressBytes[3]);
+            var payload = addressBytes.Append(addressChecksumByte);
+            await _transceiver.SendReceivePerfectMatch(payload.ToArray(), new byte[] { Ack }, token);
         }
 
         public async Task EraseMemory(uint address, ushort length, CancellationToken token = default)
