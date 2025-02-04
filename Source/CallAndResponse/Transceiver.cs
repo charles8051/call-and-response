@@ -87,6 +87,19 @@ namespace CallAndResponse
             Logger.Verbose("Received [{@message}]", string.Join(",", message));
             return message;
         }
+        protected async Task<Memory<byte>> ReceiveUntilHeaderFooterMatch(ReadOnlyMemory<byte> header, ReadOnlyMemory<byte> footer, CancellationToken token)
+        {
+            Logger.Verbose("Receiving until [{@header}] and [{@footer}]", string.Join(",", header), string.Join(",", footer));
+            var message = await ReceiveMessage((readBytes) =>
+            {
+                int headerIndex = readBytes.ToArray().Locate(header.ToArray()).FirstOrDefault();
+                int footerIndex = readBytes.ToArray().Locate(footer.ToArray()).FirstOrDefault();
+                int payloadLength = headerIndex < 0 || footerIndex < 0 ? 0 : footerIndex - headerIndex - header.Length;
+                return payloadLength;
+            }, token).ConfigureAwait(false);
+            Logger.Verbose("Received [{@message}]", string.Join(",", message));
+            return message;
+        }
         protected async Task<Memory<byte>> ReceiveUntilTerminator(char terminator, CancellationToken token)
         {
             return await ReceiveMessage((readBytes) =>
