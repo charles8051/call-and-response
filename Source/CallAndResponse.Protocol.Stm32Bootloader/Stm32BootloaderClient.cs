@@ -6,7 +6,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CallAndResponse;
-using CallAndResponse.Transport.Serial;
 
 namespace CallAndResponse.Protocol.Stm32Bootloader
 {
@@ -15,8 +14,9 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
     {
         private ITransceiver _transceiver;
 
-        private static readonly byte Ack = 0x79;
-        private static readonly byte Nack = 0x1F;
+        private const byte Ack = 0x79;
+        private const byte Nack = 0x1F;
+        public const uint Stm32BaseAddress = 0x08000000;
 
         // TODO: Add Transceiver configuration options. The transceiver we use here must be capable of 8 Data Bits, Even Parity, 1 Stop Bit.
         // our BLE implementation won't work out of the box, we'd need a separate BLE Service to configure
@@ -103,7 +103,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             return result.ToArray();
         }
 
-        public async Task<ReadOnlyMemory<byte>> Read256(uint address, uint length, CancellationToken token = default)
+        private async Task<ReadOnlyMemory<byte>> Read256(uint address, uint length, CancellationToken token = default)
         {
             if (length > 256) throw new ArgumentException();
 
@@ -123,7 +123,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             return result.Slice(1);
         }
 
-        public async Task WriteMemory(uint address, ReadOnlyMemory<byte> data, CancellationToken token = default)
+        public async Task WriteMemory(ReadOnlyMemory<byte> data, uint address = Stm32BaseAddress, CancellationToken token = default)
         {
             var numBytesWritten = 0;
             var numBytes = data.Length;
@@ -136,7 +136,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
                 address += (uint)writeLength;
             }
         }
-        public async Task Write256(uint address, ReadOnlyMemory<byte> data, CancellationToken token = default)
+        private async Task Write256(uint address, ReadOnlyMemory<byte> data, CancellationToken token = default)
         {
             if(data.Length > 256)
             {
@@ -152,8 +152,6 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             await _transceiver.SendReceivePerfectMatch(sendBytes.ToArray(), new byte[] { Ack }, token);
 
             var length = (byte)(data.Length-1);
-            //var byteLengthChecksum = (byte)(length ^ 0xff);
-            //var dataChecksum = (byte)data.Span.ToArray().Aggregate((byte)0, (acc, b) => (byte)(acc ^ b));
             byte dataChecksum = (byte)(~(ComputeChecksum(data.ToArray()) ^ (byte)length));
 
             sendBytes = new List<byte> { length };
@@ -165,17 +163,13 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
 
         private byte ComputeChecksum(byte[] data)
         {
-            /* initial value */
             byte xor = 0xff;
-            /* compute */
             for (int i = 0; i < data.Length; i++)
                 xor ^= data[i];
-
-            /* return value */
             return xor;
         }
 
-        public async Task Go(uint jumpAddress, CancellationToken token = default)
+        public async Task Go(uint jumpAddress = Stm32BaseAddress, CancellationToken token = default)
         {
             await _transceiver.SendReceivePerfectMatch(new byte[] { (byte)Stm32BootloaderCommand.Go, 0xDE }, new byte[] { Ack }, token);
 
