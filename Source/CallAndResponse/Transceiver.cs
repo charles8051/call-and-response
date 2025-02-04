@@ -12,7 +12,7 @@ namespace CallAndResponse
 {
     public abstract class Transceiver : ITransceiver
     {
-        public abstract bool IsOpen { get; }
+        public abstract bool IsOpen { get; protected set; }
         public abstract Task Open(CancellationToken token);
         public abstract Task Close(CancellationToken token);
         public abstract Task Send(ReadOnlyMemory<byte> writeBytes, CancellationToken token);
