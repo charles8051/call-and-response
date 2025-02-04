@@ -16,7 +16,7 @@ namespace CallAndResponse
         public abstract Task Open(CancellationToken token);
         public abstract Task Close(CancellationToken token);
         public abstract Task Send(ReadOnlyMemory<byte> writeBytes, CancellationToken token);
-        public abstract Task<Memory<byte>> ReceiveMessage(Func<ReadOnlyMemory<byte>, int> detectMessage, CancellationToken token);
+        public abstract Task<Memory<byte>> ReceiveMessage(Func<ReadOnlyMemory<byte>, (int, int)> detectMessage, CancellationToken token);
 
         protected ILogger Logger { get; set; } = new LoggerConfiguration().CreateLogger();
 
@@ -67,7 +67,7 @@ namespace CallAndResponse
             Logger.Verbose("Received [{@Payload}]", string.Join(",", payload.ToArray().Select(b => $"{b:X}").ToArray()));
             return payload;
         }
-        public async Task<Memory<byte>> SendReceive(ReadOnlyMemory<byte> writeBytes, Func<ReadOnlyMemory<byte>, int> detectMessage, CancellationToken token)
+        public async Task<Memory<byte>> SendReceive(ReadOnlyMemory<byte> writeBytes, Func<ReadOnlyMemory<byte>, (int,int)> detectMessage, CancellationToken token)
         {
             Logger.Verbose("Sending [{@writeBytes}]", string.Join(",", writeBytes));
             await Send(writeBytes, token).ConfigureAwait(false);
@@ -92,7 +92,7 @@ namespace CallAndResponse
             {
                 int terminatorIndex = readBytes.ToArray().Locate(terminatorPattern.ToArray()).FirstOrDefault();
                 int payloadLength = terminatorIndex < 0 ? 0 : terminatorIndex;
-                return payloadLength;
+                return (0, payloadLength);
             }, token).ConfigureAwait(false);
             Logger.Verbose("Received [{@message}]", string.Join(",", message));
             return message;
@@ -102,10 +102,24 @@ namespace CallAndResponse
             Logger.Verbose("Receiving until [{@header}] and [{@footer}]", string.Join(",", header), string.Join(",", footer));
             var message = await ReceiveMessage((readBytes) =>
             {
-                int headerIndex = readBytes.ToArray().Locate(header.ToArray()).FirstOrDefault();
-                int footerIndex = readBytes.ToArray().Locate(footer.ToArray()).FirstOrDefault();
-                int payloadLength = headerIndex < 0 || footerIndex < 0 ? 0 : footerIndex - headerIndex - header.Length;
-                return payloadLength;
+                int headerIndex = -1;
+                int footerIndex = -1;   
+
+                headerIndex = readBytes.ToArray().Locate(header.ToArray()).FirstOrDefault();
+                footerIndex = readBytes.ToArray().Locate(footer.ToArray()).FirstOrDefault();
+
+                if(headerIndex < 0 || footerIndex < 0)
+                {
+                    return (0, 0);
+                } else
+                {
+                    //var payloadLength = readBytes.Length - header.Length - footer.Length;
+                    // Use indices to calculate payload length instead
+                    var payloadLength = footerIndex - headerIndex - header.Length;
+                    return (headerIndex + header.Length, payloadLength);
+                }
+
+                
             }, token).ConfigureAwait(false);
             Logger.Verbose("Received [{@message}]", string.Join(",", message));
             return message;
@@ -116,14 +130,18 @@ namespace CallAndResponse
             {
                 int terminatorIndex = readBytes.Span.IndexOf((byte)terminator);
                 int payloadLength = terminatorIndex < 0 ? 0 : terminatorIndex;
-                return payloadLength;
+                return (0, payloadLength);
             }, token).ConfigureAwait(false);
         }
         public async Task<Memory<byte>> ReceiveExactly(int numBytesExpected, CancellationToken token)
         {
             return await ReceiveMessage((readBytes) =>
             {
-                return readBytes.Length == numBytesExpected ? numBytesExpected : 0;
+                if (readBytes.Length >= numBytesExpected)
+                {
+                    return (0, numBytesExpected);
+                }
+                return (0, 0);
             }, token).ConfigureAwait(false);
         }
 

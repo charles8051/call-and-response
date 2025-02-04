@@ -45,7 +45,7 @@ namespace CallAndResponse.Transport.Ble
         private Channel<byte> rxChannel = Channel.CreateBounded<byte>(_rxBufferSize);
 
         public bool _isConnected = false;
-        public override bool IsOpen => _isConnected;
+        public override bool IsOpen { get { return _isConnected; } protected set { _isConnected = value; } }
 
         //public int ReadTimeout { get; set; } = 500;
         //public int WriteTimeout { get; set; } = 500;
@@ -175,7 +175,7 @@ namespace CallAndResponse.Transport.Ble
             }
         }
 
-        public override async Task<Memory<byte>> ReceiveMessage(Func<ReadOnlyMemory<byte>, int> detectMessage, CancellationToken token = default)
+        public override async Task<Memory<byte>> ReceiveMessage(Func<ReadOnlyMemory<byte>, (int,int)> detectMessage, CancellationToken token = default)
         {
             if (IsOpen == false)
             {
@@ -186,6 +186,7 @@ namespace CallAndResponse.Transport.Ble
             await Clear();
 
             int payloadLength = 0;
+            int payloadOffset = 0;
             int numBytesRead = 0;
             var data = new List<byte>();
             while (token.IsCancellationRequested is false)
@@ -196,7 +197,7 @@ namespace CallAndResponse.Transport.Ble
                 data.Add(await rxChannel.Reader.ReadAsync(token));
                 numBytesRead++;
 
-                payloadLength = detectMessage(data.ToArray());
+                (payloadOffset, payloadLength) = detectMessage(data.ToArray());
                 if (payloadLength > 0) break;
             }
             token.ThrowIfCancellationRequested();

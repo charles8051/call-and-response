@@ -16,12 +16,16 @@ namespace CallAndResponse.Transport.Serial
 
         private readonly int _maxRxBufferSize = 1024;
 
-        private bool _isConnected;
+        private bool _isOpen;
         public override bool IsOpen
         {
             get
             {
-                return _serialPort?.IsOpen ?? false;
+                return _isOpen;
+            }
+            protected set
+            {
+                _isOpen = value;
             }
         }
 
@@ -84,7 +88,7 @@ namespace CallAndResponse.Transport.Serial
             await _serialPort.BaseStream.WriteAsync(writeBytes.ToArray(), 0, writeBytes.Length, token).ConfigureAwait(false);
         }
 
-        public override async Task<Memory<byte>> ReceiveMessage(Func<ReadOnlyMemory<byte>, int> detectMessage, CancellationToken token)
+        public override async Task<Memory<byte>> ReceiveMessage(Func<ReadOnlyMemory<byte>, (int,int)> detectMessage, CancellationToken token)
         {
             if (_serialPort is null) { throw new TransceiverConnectionException("Serial Port is null"); }
             if (_serialPort.IsOpen is false)
@@ -93,6 +97,7 @@ namespace CallAndResponse.Transport.Serial
             }
 
             int payloadLength = 0;
+            int payloadOffset = 0;
             int numBytesRead = 0;
 
 
@@ -125,7 +130,8 @@ namespace CallAndResponse.Transport.Serial
                     }
                     //numBytesRead += await _serialPort.BaseStream.ReadAsync(readBytes, numBytesRead, _maxRxBufferSize - numBytesRead, token);
 
-                    payloadLength = detectMessage(readBytes.Take(numBytesRead).ToArray());
+                    // TODO: return index of payload start also
+                    (payloadOffset, payloadLength) = detectMessage(readBytes.Take(numBytesRead).ToArray());
                     if (payloadLength > 0)
                     {
                         break;
@@ -135,7 +141,7 @@ namespace CallAndResponse.Transport.Serial
                 }
 
                 token.ThrowIfCancellationRequested();
-                return readBytes.Take(payloadLength).ToArray();
+                return readBytes.Skip(payloadOffset).Take(payloadLength).ToArray();
             }
             catch (Exception e)
             {
