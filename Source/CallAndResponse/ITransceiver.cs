@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Threading.Tasks;
 using System.Threading;
+using Serilog.Core;
+using System.Linq;
 
 namespace CallAndResponse
 {
@@ -17,5 +19,9 @@ namespace CallAndResponse
         Task<Memory<byte>> SendReceive(ReadOnlyMemory<byte> writeBytes, ReadOnlyMemory<byte> footer, CancellationToken token);
         Task<Memory<byte>> SendReceive(ReadOnlyMemory<byte> writeBytes, ReadOnlyMemory<byte> header, ReadOnlyMemory<byte> footer, CancellationToken token);
         Task<Memory<byte>> SendReceive(ReadOnlyMemory<byte> writeBytes, Func<ReadOnlyMemory<byte>, int> detectMessage, CancellationToken token);
+        Task<Memory<byte>> ReceiveUntilTerminatorPattern(ReadOnlyMemory<byte> terminatorPattern, CancellationToken token);
+        Task<Memory<byte>> ReceiveUntilHeaderFooterMatch(ReadOnlyMemory<byte> header, ReadOnlyMemory<byte> footer, CancellationToken token);
+        Task<Memory<byte>> ReceiveUntilTerminator(char terminator, CancellationToken token);
+        Task<Memory<byte>> ReceiveExactly(int numBytesExpected, CancellationToken token);
     }
 }
