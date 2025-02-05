@@ -38,15 +38,18 @@ jobs:
 
     - name: 'Pack CallAndResponse'
       run: dotnet pack Source/CallAndResponse/CallAndResponse.csproj --no-restore --no-build --configuration Release --include-symbols -p:PackageVersion=${{ steps.get_version.outputs.version-without-v }} --output ${{ env.PACKAGE_OUTPUT_DIRECTORY }} -p:SymbolPackageFormat=snupkg
-      
-    - name: 'Pack CallAndResponse'
-      run: dotnet pack Source/CallAndResponse.Protocol.Modbus/CallAndResponse.Protocol.Modbus.csproj --no-restore --no-build --configuration Release --include-symbols -p:PackageVersion=${{ steps.get_version.outputs.version-without-v }} --output ${{ env.PACKAGE_OUTPUT_DIRECTORY }} -p:SymbolPackageFormat=snupkg
-    
-    - name: 'Pack CallAndResponse'
+
+    - name: 'Pack CallAndResponse.Transport.Serial'
+      run: dotnet pack Source/CallAndResponse.Transport.Serial/CallAndResponse.Transport.Serial.csproj --no-restore --no-build --configuration Release --include-symbols -p:PackageVersion=${{ steps.get_version.outputs.version-without-v }} --output ${{ env.PACKAGE_OUTPUT_DIRECTORY }} -p:SymbolPackageFormat=snupkg
+
+    - name: 'Pack CallAndResponse.Transport.Ble'
       run: dotnet pack Source/CallAndResponse.Transport.Ble/CallAndResponse.Transport.Ble.csproj --no-restore --no-build --configuration Release --include-symbols -p:PackageVersion=${{ steps.get_version.outputs.version-without-v }} --output ${{ env.PACKAGE_OUTPUT_DIRECTORY }} -p:SymbolPackageFormat=snupkg
       
-    - name: 'Pack CallAndResponse'
-      run: dotnet pack Source/CallAndResponse.Transport.Serial/CallAndResponse.Transport.Serial.csproj --no-restore --no-build --configuration Release --include-symbols -p:PackageVersion=${{ steps.get_version.outputs.version-without-v }} --output ${{ env.PACKAGE_OUTPUT_DIRECTORY }} -p:SymbolPackageFormat=snupkg
+    - name: 'Pack CallAndResponse.Protocol.Modbus'
+      run: dotnet pack Source/CallAndResponse.Protocol.Modbus/CallAndResponse.Protocol.Modbus.csproj --no-restore --no-build --configuration Release --include-symbols -p:PackageVersion=${{ steps.get_version.outputs.version-without-v }} --output ${{ env.PACKAGE_OUTPUT_DIRECTORY }} -p:SymbolPackageFormat=snupkg
+    
+    - name: 'Pack CallAndResponse.Protocol.Stm32Bootloader'
+      run: dotnet pack Source/CallAndResponse.Protocol.Stm32Bootloader/CallAndResponse.Protocol.Stm32Bootloader.csproj--no-restore --no-build --configuration Release --include-symbols -p:PackageVersion=${{ steps.get_version.outputs.version-without-v }} --output ${{ env.PACKAGE_OUTPUT_DIRECTORY }} -p:SymbolPackageFormat=snupkg
 
     - name: 'Push packages to GitHub'
       run: dotnet nuget push ${{ env.PACKAGE_OUTPUT_DIRECTORY }}/**\*.nupkg -k ${{ secrets.CALL_AND_RESPONSE_SECRET }} -s ${{ env.GITHUB_SOURCE_URL }} --skip-duplicate
