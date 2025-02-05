@@ -73,7 +73,10 @@ namespace CallAndResponse.Transport.Serial
         public override async Task Close(CancellationToken token)
         {
             if(_serialPort is null) { return; }
-            await Task.Run(() => _serialPort.Close());
+            await Task.Run(() => {
+                _serialPort.Close();
+                _serialPort.Dispose();
+            });
         }
 
         public override async Task Send(ReadOnlyMemory<byte> writeBytes, CancellationToken token)
