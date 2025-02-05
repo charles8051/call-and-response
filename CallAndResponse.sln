@@ -22,6 +22,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CallAndResponse.Test.Sandbo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CallAndResponse.Protocol.Stm32Bootloader", "Source\CallAndResponse.Protocol.Stm32Bootloader\CallAndResponse.Protocol.Stm32Bootloader.csproj", "{B6577915-07D3-4693-AA42-20FB451380E8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CallAndResponse.Transport.Treehopper", "Source\CallAndResponse.Transport.Treehopper\CallAndResponse.Transport.Treehopper.csproj", "{62E3AFCE-929B-4CCF-AADB-79D40A297A02}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -52,6 +54,10 @@ Global
 		{B6577915-07D3-4693-AA42-20FB451380E8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B6577915-07D3-4693-AA42-20FB451380E8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B6577915-07D3-4693-AA42-20FB451380E8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{62E3AFCE-929B-4CCF-AADB-79D40A297A02}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{62E3AFCE-929B-4CCF-AADB-79D40A297A02}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{62E3AFCE-929B-4CCF-AADB-79D40A297A02}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{62E3AFCE-929B-4CCF-AADB-79D40A297A02}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -63,6 +69,7 @@ Global
 		{3390ACE7-E5BD-4C5A-A612-B0B12C29089B} = {53448A5E-8523-4D83-8DED-6607D5310A22}
 		{56148190-0EC6-4153-B14C-1A459576FACA} = {6396F098-5004-48AA-8A50-A91A77E4A18E}
 		{B6577915-07D3-4693-AA42-20FB451380E8} = {53448A5E-8523-4D83-8DED-6607D5310A22}
+		{62E3AFCE-929B-4CCF-AADB-79D40A297A02} = {53448A5E-8523-4D83-8DED-6607D5310A22}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {C6BE4E4E-EF99-4F32-936E-50655B32F671}

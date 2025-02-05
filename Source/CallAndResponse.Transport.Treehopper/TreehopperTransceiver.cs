@@ -10,7 +10,7 @@ namespace CallAndResponse.Transport.Treehopper
 {
     public class TreehopperTransceiver : Transceiver
     {
-        public override bool IsOpen => throw new NotImplementedException();
+        public override bool IsOpen { get; protected set; }
 
         private TreehopperUsb _board;
         private int _maxRxBufferSize = 1024;
@@ -37,12 +37,13 @@ namespace CallAndResponse.Transport.Treehopper
             _board.Disconnect();
         }
 
-        public override async Task<Memory<byte>> ReceiveMessage(Func<ReadOnlyMemory<byte>, int> detectMessage, CancellationToken token = default)
+        public override async Task<Memory<byte>> ReceiveMessage(Func<ReadOnlyMemory<byte>, (int,int)> detectMessage, CancellationToken token = default)
         {
             var data = await _board.Uart.ReceiveAsync();
             data.AsMemory();
 
             var payloadLength = 0;
+            var payloadOffset = 0;
             var numBytesRead = 0;
 
             var readBytes = new byte[_maxRxBufferSize];
@@ -55,7 +56,7 @@ namespace CallAndResponse.Transport.Treehopper
                 var newData = await _board.Uart.ReceiveAsync();
                 readBytes.Concat(newData.ToArray());
 
-                payloadLength = detectMessage(data);
+                (payloadOffset, payloadLength) = detectMessage(data);
                 if (payloadLength > 0)
                 {
                     break;
@@ -63,7 +64,7 @@ namespace CallAndResponse.Transport.Treehopper
             }
 
             token.ThrowIfCancellationRequested();
-            return readBytes.Take(payloadLength).ToArray();
+            return readBytes.Skip(payloadOffset).Take(payloadLength).ToArray();
         }
 
         public override async Task Send(ReadOnlyMemory<byte> writeBytes, CancellationToken token = default)
