@@ -9,9 +9,11 @@ using CallAndResponse;
 
 namespace CallAndResponse.Protocol.Stm32Bootloader
 {
+
     public class Stm32BootloaderClient
     {
         private ITransceiver _transceiver;
+
         private const byte Ack = 0x79;
         private const byte Nack = 0x1F;
         public const uint Stm32BaseAddress = 0x08000000;
@@ -31,6 +33,8 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         {
             await _transceiver.Close(token);
         }
+
+
         public async Task<Stm32ProtocolInfo> GetSupportedCommands(CancellationToken token = default)
         {
             var result = await _transceiver.SendReceiveHeaderFooter(new byte[] { (byte)Stm32BootloaderCommand.Get, 0xFF }, new byte[] { Ack }, new byte[] { Ack }, token);

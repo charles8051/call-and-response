@@ -10,6 +10,8 @@ using Serilog.Events;
 
 namespace CallAndResponse
 {
+
+    // TODO: refactor to return headers and footers with the payload??
     public abstract class Transceiver : ITransceiver
     {
         public abstract bool IsOpen { get; protected set; }
@@ -17,7 +19,6 @@ namespace CallAndResponse
         public abstract Task Close(CancellationToken token);
         public abstract Task Send(ReadOnlyMemory<byte> writeBytes, CancellationToken token);
         public abstract Task<Memory<byte>> ReceiveMessage(Func<ReadOnlyMemory<byte>, (int, int)> detectMessage, CancellationToken token);
-
         protected ILogger Logger { get; set; } = new LoggerConfiguration().CreateLogger();
 
         public Transceiver()
@@ -30,7 +31,7 @@ namespace CallAndResponse
 
         #region Default Implementations
 
-        public async Task<string> SendReceive(string writeString, char terminator, CancellationToken token)
+        public async Task<string> SendReceiveString(string writeString, char terminator, CancellationToken token)
         {
             Logger.Verbose("Sending [{@writeBytes}]", writeString);
             await Send(Encoding.ASCII.GetBytes(writeString), token).ConfigureAwait(false);
@@ -39,7 +40,7 @@ namespace CallAndResponse
             Logger.Verbose("Received [{@Payload}]", payloadString);
             return payloadString;
         }
-        public async Task<string> SendReceive(string writeString, string terminatorString, CancellationToken token)
+        public async Task<string> SendReceiveString(string writeString, string terminatorString, CancellationToken token)
         {
             Logger.Verbose("Sending [{@writeBytes}]", writeString);
             await Send(Encoding.ASCII.GetBytes(writeString), token).ConfigureAwait(false);
@@ -48,7 +49,7 @@ namespace CallAndResponse
             Logger.Verbose("Received [{@Payload}]", payloadString);
             return payloadString;
         }
-        public async Task<Memory<byte>> SendReceive(ReadOnlyMemory<byte> writeBytes, int numBytesExpected, CancellationToken token)
+        public async Task<Memory<byte>> SendReceiveExactly(ReadOnlyMemory<byte> writeBytes, int numBytesExpected, CancellationToken token)
         {
             var byteStrings = writeBytes.ToArray().Select(b => $"{b:X2}").ToArray();
             var readable = string.Join(",", byteStrings);
@@ -58,7 +59,17 @@ namespace CallAndResponse
             Logger.Verbose("Received [{@Payload}]", string.Join(",", payload.ToArray().Select(b => $"{b:X}").ToArray()));
             return payload;
         }
-        public async Task<Memory<byte>> SendReceive(ReadOnlyMemory<byte> writeBytes, ReadOnlyMemory<byte> terminatorPattern, CancellationToken token)
+
+        public async Task<Memory<byte>> SendReceivePerfectMatch(ReadOnlyMemory<byte> writeBytes, ReadOnlyMemory<byte> matchBytes, CancellationToken token)
+        {
+            Logger.Verbose("Sending [{@writeBytes}]", string.Join(",", writeBytes.ToArray().Select(b => $"{b:X}").ToArray()));
+            await Send(writeBytes, token).ConfigureAwait(false);
+            var payload = await ReceiveUntilPerfectMatch(matchBytes, token).ConfigureAwait(false);
+            Logger.Verbose("Received [{@Payload}]", string.Join(",", payload.ToArray().Select(b => $"{b:X}").ToArray()));
+            return payload;
+        }
+
+        public async Task<Memory<byte>> SendReceiveFooter(ReadOnlyMemory<byte> writeBytes, ReadOnlyMemory<byte> terminatorPattern, CancellationToken token)
         {
             var readable = writeBytes.ToArray().Select(b => $"{b:X2}").ToArray();
             Logger.Verbose("Sending [{@writeBytes}]", string.Join(",", readable));
@@ -76,7 +87,7 @@ namespace CallAndResponse
             return payload;
         }
 
-        public async Task<Memory<byte>> SendReceive(ReadOnlyMemory<byte> writeBytes, ReadOnlyMemory<byte> header, ReadOnlyMemory<byte> footer, CancellationToken token)
+        public async Task<Memory<byte>> SendReceiveHeaderFooter(ReadOnlyMemory<byte> writeBytes, ReadOnlyMemory<byte> header, ReadOnlyMemory<byte> footer, CancellationToken token)
         {
             Logger.Verbose("Sending [{@writeBytes}]", string.Join(",", writeBytes.ToArray().Select(b => $"{b:X}").ToArray()));
             await Send(writeBytes, token).ConfigureAwait(false);
@@ -103,12 +114,14 @@ namespace CallAndResponse
             var message = await ReceiveMessage((readBytes) =>
             {
                 int headerIndex = -1;
-                int footerIndex = -1;   
+                int footerIndex = -1;
+                int offsetFooterIndex = -1; 
 
                 headerIndex = readBytes.ToArray().Locate(header.ToArray()).FirstOrDefault();
-                footerIndex = readBytes.ToArray().Locate(footer.ToArray()).FirstOrDefault();
+                offsetFooterIndex = readBytes.ToArray().Skip(headerIndex + header.Length).ToArray().Locate(footer.ToArray()).FirstOrDefault();
+                footerIndex = offsetFooterIndex < 0 ? -1 : headerIndex + header.Length + offsetFooterIndex;
 
-                if(headerIndex < 0 || footerIndex < 0)
+                if (headerIndex < 0 || footerIndex < 0)
                 {
                     return (0, 0);
                 } else
@@ -118,12 +131,25 @@ namespace CallAndResponse
                     var payloadLength = footerIndex - headerIndex - header.Length;
                     return (headerIndex + header.Length, payloadLength);
                 }
-
-                
             }, token).ConfigureAwait(false);
             Logger.Verbose("Received [{@message}]", string.Join(",", message));
             return message;
         }
+
+        public async Task<Memory<byte>> ReceiveUntilPerfectMatch(ReadOnlyMemory<byte> matchBytes, CancellationToken token)
+        {
+            //Logger.Verbose("Receiving until [{@matchBytes}]", string.Join(",", matchBytes));
+            var message = await ReceiveMessage((readBytes) =>
+            {
+                int matchIndex = -1;
+                matchIndex = readBytes.ToArray().Locate(matchBytes.ToArray()).FirstOrDefault();
+                int payloadLength = matchIndex < 0 ? 0 : matchIndex + matchBytes.Length;
+                return (0, payloadLength);
+            }, token).ConfigureAwait(false);
+            Logger.Verbose("Received [{@message}]", string.Join(",", message));
+            return message;
+        }
+
         public async Task<Memory<byte>> ReceiveUntilTerminator(char terminator, CancellationToken token)
         {
             return await ReceiveMessage((readBytes) =>

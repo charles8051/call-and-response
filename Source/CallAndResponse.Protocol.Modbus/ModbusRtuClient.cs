@@ -45,7 +45,7 @@ namespace CallAndResponse.Protocol.Modbus
 
             try
             {
-                var response = await _transceiver.SendReceive(call, 5 + 2 * numRegisters, token).ConfigureAwait(false);
+                var response = await _transceiver.SendReceiveExactly(call, 5 + 2 * numRegisters, token).ConfigureAwait(false);
                 ValidateResponse(unitIdentifier, response, ModbusFunctionCode.ReadHoldingRegisters);
                 var payload = response.Slice(3, response.Length - 5);
                 return payload.Flip16BitValues();
@@ -72,7 +72,7 @@ namespace CallAndResponse.Protocol.Modbus
 
             try
             {
-                var response = await _transceiver.SendReceive(call, 3 + 2, token).ConfigureAwait(false);
+                var response = await _transceiver.SendReceiveExactly(call, 3 + 2, token).ConfigureAwait(false);
                 ValidateResponse(unitIdentifier, response, ModbusFunctionCode.WriteMultipleRegisters);
             }
             catch (TransceiverTransportException e)
