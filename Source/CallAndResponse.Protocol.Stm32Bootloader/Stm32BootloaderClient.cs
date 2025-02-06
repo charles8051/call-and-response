@@ -18,6 +18,8 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         private const byte Nack = 0x1F;
         public const uint Stm32BaseAddress = 0x08000000;
 
+        // TODO: provide MCU model specific support
+
         // TODO: Add Transceiver configuration options. The transceiver we use here must be capable of 8 Data Bits, Even Parity, 1 Stop Bit.
         // our BLE implementation won't work out of the box, we'd need a separate BLE Service to configure
         public Stm32BootloaderClient(ITransceiver transceiver)
@@ -183,9 +185,23 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         }
 
         // Only available for USART Booloader 3.0+
-        public async Task ExtendedEraseMemory(uint address, ushort length, CancellationToken token = default)
+        public async Task ExtendedEraseMemoryPages(ushort numPages, CancellationToken token = default)
         {
-            throw new NotImplementedException();
+            await _transceiver.SendReceivePerfectMatch(new byte[] { (byte)Stm32BootloaderCommand.ExtendedEraseMemory, 0xBB }, new byte[] { Ack }, token);
+
+            var shorts = new List<ushort>();
+            shorts.Add(numPages);
+
+            for(int i = 0; i < numPages + 1; i++)
+            {
+                shorts.Add((ushort)i);
+            }
+
+            var payload = shorts.SelectMany((x) => BitConverter.GetBytes(x).Reverse());
+            var checksum = (byte)~(ComputeChecksum(payload.ToArray()));
+            payload = payload.Append(checksum);
+
+            await _transceiver.SendReceivePerfectMatch(payload.ToArray(), new byte[] { Ack }, token);
         }
 
         public async Task WriteProtect(CancellationToken token = default)
