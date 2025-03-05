@@ -10,18 +10,13 @@ using Plugin.BLE.Abstractions;
 using System.Diagnostics;
 using System.Threading;
 using Serilog;
-using System.Text;
 using System.Threading.Channels;
-using Serilog.Events;
-using Serilog.Sinks.SystemConsole.Themes;
-using System.Numerics;
-using System.ComponentModel;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using System.ComponentModel.Design.Serialization;
+
 
 namespace CallAndResponse.Transport.Ble
 {
+    // TODO: Add option to connect non-bonded device
     public class BleNordicUartTransceiver : Transceiver
     {
         private readonly Guid UartServiceGuid = Guid.Parse("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
@@ -36,9 +31,10 @@ namespace CallAndResponse.Transport.Ble
         private ICharacteristic? uartRx = null;
         private ICharacteristic? uartTx = null;
 
-        private readonly int MtuRequest = 300;
+        private readonly int MtuRequest = 517;
 
-        private Guid _id = Guid.Empty;
+        private Guid Id = Guid.Empty;
+        //public Guid Id { get; private set; } = Guid.Parse("00000000-0000-0000-0000-e4b32306888e");
 
         // TODO never: investigate performance implications
         private static readonly int _rxBufferSize = 1024;
@@ -49,6 +45,7 @@ namespace CallAndResponse.Transport.Ble
 
         //public int ReadTimeout { get; set; } = 500;
         //public int WriteTimeout { get; set; } = 500;
+        // TODO: Implement default timeouts at this layer because different transports have different timing characteristics
 
         public BleNordicUartTransceiver(ILogger logger)
         {
@@ -56,7 +53,7 @@ namespace CallAndResponse.Transport.Ble
         }
         public BleNordicUartTransceiver(Guid id) : base()
         {
-            _id = id;
+            Id = id;
         }
         public BleNordicUartTransceiver()
         {
@@ -64,23 +61,44 @@ namespace CallAndResponse.Transport.Ble
 
         public override async Task Open(CancellationToken token = default)
         {
-            //if (_id == Guid.Empty) throw new Exception("No GUID. Scan or provide a GUID");
             try
             {
                 await CrossBluetoothLE.Current.TrySetStateAsync(true);
 
-                if(_id == Guid.Empty)
+                // If a GUID is specified, connect directly without scanning or bonding
+                // Will not work for devices using RPA addresses
+                if (Id != Guid.Empty)
                 {
-                    Logger.Information("Searching for device");
-                    uartDevice = await Scan(token);
-                    if (uartDevice is null) throw new TransceiverConnectionException("Device not found");
-                    Logger.Information("Device found with UART Service");
-                    await adapter.ConnectToDeviceAsync(uartDevice, default ,token);
-                    Logger.Information("Device connected");
-                } else
-                {
-                    uartDevice = await adapter.ConnectToKnownDeviceAsync(_id, default, token);
+                    uartDevice = await ScanConnectDevice(Id, token);
                 }
+                else // then check bonded devices. Then check all devices
+                {
+                    var devices = adapter.BondedDevices;
+                    foreach (var device in devices)
+                    {
+                        Logger.Information("Bonded device: {@DeviceName}", device.Name);
+
+                        var bondedDeviceServices = await device.GetServicesAsync();
+                        foreach (var service in bondedDeviceServices)
+                        {
+                            Logger.Information("Service: {@DeviceName}: {@ServiceId}", device.Name, service.Id);
+                            if (service.Id.Equals(UartServiceGuid))
+                            {
+                                Logger.Information("Found device with Nordic UART Service. Id: {@DeviceId}", device.Id);
+                                uartDevice = device;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (uartDevice is null)
+                {
+                    throw new TransceiverConnectionException("Device not found");    
+                }
+                await adapter.ConnectToKnownDeviceAsync(uartDevice.Id);
+                CrossBluetoothLE.Current.Adapter.DeviceDisconnected += DeviceDisconnectedHandler;
+                await Task.Delay(2000); // Let the server respond to the connection event
 
                 var services = await uartDevice.GetServicesAsync();
                 uartService = services.Where(s => s.Id == UartServiceGuid).FirstOrDefault();
@@ -92,20 +110,19 @@ namespace CallAndResponse.Transport.Ble
                 uartTx = characteristics.Where(c => c.Id == UartTxGuid).FirstOrDefault();
                 if (uartRx is null || uartTx is null) throw new TransceiverConnectionException("Characteristics not found");
 
-                uartDevice.UpdateConnectionInterval(ConnectionInterval.High);
-
-                Logger.Information("Request MTU: {@MtuRequest}", MtuRequest);
-                var mtuActual = await uartDevice.RequestMtuAsync(MtuRequest);
-                Logger.Information("Actual MTU: {@MtuActual}", mtuActual);
+                // TODO: If android, do these things
+                //if (DeviceInfo.Current.DeviceType == DeviceType.Android)
+                //{
+                //    uartDevice.UpdateConnectionInterval(ConnectionInterval.High);
+                //    var mtuActual = await uartDevice.RequestMtuAsync(MtuRequest);
+                //}
 
                 uartTx.WriteType = CharacteristicWriteType.WithoutResponse;
 
-                _isConnected = true;
-                CrossBluetoothLE.Current.Adapter.DeviceDisconnected += DeviceDisconnectedHandler;
-
                 uartRx.ValueUpdated += RxNotificationHandler;
-                await uartRx.StartUpdatesAsync();
-                await Task.Delay(2000); // will miss some events if we don't do this
+                await uartRx.StartUpdatesAsync(token);
+
+                _isConnected = true;
             }
             catch (Exception e)
             {
@@ -129,6 +146,11 @@ namespace CallAndResponse.Transport.Ble
             {
                 if (uartDevice != null)
                 {
+                    // use compiler directive to check if windows. If not windows, call adapter.DisconnectAsync(uartDevice)
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) is false)
+                    {
+                        await adapter.DisconnectDeviceAsync(uartDevice);
+                    }
                     uartDevice.Dispose();
                 }
             }
@@ -171,7 +193,7 @@ namespace CallAndResponse.Transport.Ble
             catch (Exception e)
             {
                 Logger.Error("Send(): " + e.Message, e);
-                throw;
+                //throw;
             }
         }
 
@@ -204,14 +226,20 @@ namespace CallAndResponse.Transport.Ble
             return data.Take(payloadLength).ToArray().AsMemory();
         }
 
-        private async Task<IDevice> ScanConnect(Guid deviceGuid, CancellationToken token = default)
+        private async Task<IDevice> ScanConnectService()
+        {
+            throw new NotImplementedException();
+        }
+
+        private async Task<IDevice> ScanConnectDevice(Guid deviceGuid, CancellationToken token = default)
         {
             IDevice? device = null;
 
             void deviceDiscovered(object sender, DeviceEventArgs a)
             {
-                if(a.Device.Id.Equals(deviceGuid))
-                //if (a.Device.Name.Equals("Datafeel El Jefe"))
+                Logger.Information("Device discovered: {@DeviceName}", a.Device.Name);
+                if (a.Device.Id.Equals(deviceGuid))
+                //if (a.Device.Name.Contains("DataFeel"))
                 {
                     adapter.DeviceDiscovered -= deviceDiscovered;
                     device = a.Device;
