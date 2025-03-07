@@ -9,7 +9,7 @@ env:
   SOLUTION_PATH: 'CallAndResponse.sln'
   PACKAGE_OUTPUT_DIRECTORY: 'Output/Release'
   NUGET_SOURCE_URL: 'https://api.nuget.org/v3/index.json'
-  GITHUB_SOURCE_URL: 'https://nuget.pkg.github.com/clee781/index.json'
+  GITHUB_SOURCE_URL: 'https://nuget.pkg.github.com/charles8051/index.json'
 
 jobs:
   deploy:
