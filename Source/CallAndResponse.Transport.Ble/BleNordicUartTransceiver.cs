@@ -67,11 +67,12 @@ namespace CallAndResponse.Transport.Ble
 
                 // If a GUID is specified, connect directly without scanning or bonding
                 // Will not work for devices using RPA addresses
+
                 if (Id != Guid.Empty)
                 {
                     uartDevice = await ScanConnectDevice(Id, token);
                 }
-                else // then check bonded devices. Then check all devices
+                else // Then check bonded devices. 
                 {
                     var devices = adapter.BondedDevices;
                     foreach (var device in devices)
@@ -90,7 +91,7 @@ namespace CallAndResponse.Transport.Ble
                             }
                         }
                     }
-                }
+                } // TODO: Then check all devices
 
                 if (uartDevice is null)
                 {
@@ -110,12 +111,9 @@ namespace CallAndResponse.Transport.Ble
                 uartTx = characteristics.Where(c => c.Id == UartTxGuid).FirstOrDefault();
                 if (uartRx is null || uartTx is null) throw new TransceiverConnectionException("Characteristics not found");
 
-                // TODO: If android, do these things
-                //if (DeviceInfo.Current.DeviceType == DeviceType.Android)
-                //{
-                //    uartDevice.UpdateConnectionInterval(ConnectionInterval.High);
-                //    var mtuActual = await uartDevice.RequestMtuAsync(MtuRequest);
-                //}
+                // Only relevant for Android
+                uartDevice.UpdateConnectionInterval(ConnectionInterval.High);
+                var mtuActual = await uartDevice.RequestMtuAsync(MtuRequest);
 
                 uartTx.WriteType = CharacteristicWriteType.WithoutResponse;
 
@@ -178,7 +176,6 @@ namespace CallAndResponse.Transport.Ble
                     var result = await uartTx.WriteAsync(writeBytes.ToArray(), token);
                     if (result == 0)
                     {
-                        //await Task.Delay(3); // Add some deadtime to avoid overloading our garbage esp32 arduino code
                     } else
                     {
                         throw new TransceiverTransportException("Failed to write to BLE");
@@ -273,6 +270,7 @@ namespace CallAndResponse.Transport.Ble
                 var records = args.Device.AdvertisementRecords;
                 foreach (var record in records)
                 {
+                    Logger.Information($"   Record: {record}");
                     if (record.Type == AdvertisementRecordType.UuidsIncomplete128Bit || record.Type == AdvertisementRecordType.UuidsComplete128Bit)
                     {
                         var hexData = record.Data.ToList().Select(x => $"{x:X}").ToArray().Reverse();

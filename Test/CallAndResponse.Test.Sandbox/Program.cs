@@ -36,31 +36,35 @@ using (var cts = new CancellationTokenSource(15000))
         //await Task.Delay(2000);
         //await client.ExtendedEraseMemoryPages(0x2c, cts.Token);
 
-        for(byte i = 0; i < 100; i++)
-        {
+        //for(byte i = 0; i < 200; i++)
+        //{
+        while(Console.KeyAvailable == false) { 
             var sw = new Stopwatch();
             sw.Start();
             try
             {
-                var dummyData = new byte[512];
+                var dummyData = new byte[200];
                 //for (byte j = 0; j < dummyData.Length; j++)
                 //{
                 //    dummyData[j] = j;
                 //}
-                //dummyData[63] = 0xff;
-                //dummyData[0] = i;
+                // dummyData[63] = 0xff;
+                // dummyData[0] = i;
                 // set every byte of dummydata to i
-                //for (byte j = 1; j < dummyData.Length; j++)
+                //for (byte j = 1; j < dummyData.Length; +)
                 //{
                 //    dummyData[j] = i;
                 //}
                 using var sendCts = new CancellationTokenSource(120);
                 var data = await transceiver.SendReceiveExactly(dummyData, dummyData.Length, sendCts.Token);
+                //await Task.Delay(10);
+
                 //var waitWatch = Stopwatch.StartNew();
                 //await transceiver.Send(dummyData, sendCts.Token);
+                await Task.Delay(20);
 
-                //await Task.Delay(1);
                 //while (waitWatch.ElapsedMilliseconds < 10)
+                //await Task.Delay(1);
                 //{
                 //}
 
@@ -71,7 +75,7 @@ using (var cts = new CancellationTokenSource(15000))
                 Console.WriteLine("failed: " + e.Message);
             }
             sw.Stop();
-            Console.WriteLine("Sent " + i + " in " + sw.ElapsedMilliseconds + "ms");
+            //Console.WriteLine("Sent " + i + " in " + sw.ElapsedMilliseconds + "ms");
         }
 
         await Task.Delay(500);
