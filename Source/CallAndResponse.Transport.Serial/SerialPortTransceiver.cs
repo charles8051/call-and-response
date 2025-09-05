@@ -35,19 +35,13 @@ namespace CallAndResponse.Transport.Serial
         protected int _dataBits;
         protected StopBits _stopBits;
 
-        protected SerialPortTransceiver(SerialTransceiverOptions options)
+        public SerialPortTransceiver(SerialTransceiverOptions options, ILogger logger = null) : base(logger)
         {
             _portName = options.PortName;
             _baudRate = options.BaudRate;
             _parity = options.Parity;
             _dataBits = options.DataBits;
             _stopBits = options.StopBits;
-        }
-
-
-        public SerialPortTransceiver(ILogger logger) : base(logger)
-        {
-            
         }
 
         public override async Task Open(CancellationToken token)
@@ -58,7 +52,6 @@ namespace CallAndResponse.Transport.Serial
                 _serialPort.WriteTimeout = SerialPort.InfiniteTimeout;
                 _serialPort.ReadTimeout = SerialPort.InfiniteTimeout;
             }
-
             //if (_serialPort.IsOpen is false) { return; }
 
             await Task.Run(() => _serialPort.Open());
@@ -125,9 +118,7 @@ namespace CallAndResponse.Transport.Serial
                             Console.WriteLine(e.Message);
                         }
                     }
-                    //numBytesRead += await _serialPort.BaseStream.ReadAsync(readBytes, numBytesRead, _maxRxBufferSize - numBytesRead, token);
 
-                    // TODO: return index of payload start also
                     (payloadOffset, payloadLength) = detectMessage(readBytes.Take(numBytesRead).ToArray());
                     if (payloadLength > 0)
                     {
