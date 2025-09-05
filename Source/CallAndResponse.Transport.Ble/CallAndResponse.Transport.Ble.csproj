@@ -26,7 +26,6 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageOutputPath>..\..\Output\Debug</PackageOutputPath>
-    <PackageVersion>1.3.0-alpha</PackageVersion>
   </PropertyGroup>
 
 </Project>
