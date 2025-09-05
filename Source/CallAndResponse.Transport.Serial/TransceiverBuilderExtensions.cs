@@ -24,7 +24,6 @@ namespace CallAndResponse.Transport.Serial
 
             return builder with { _transceiverFactory = new SerialTransceiverFactory(opts) };
         }
-
     }
 
     public class SerialTransceiverOptions
