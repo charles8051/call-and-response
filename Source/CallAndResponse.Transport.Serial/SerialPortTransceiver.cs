@@ -35,25 +35,19 @@ namespace CallAndResponse.Transport.Serial
         protected int _dataBits;
         protected StopBits _stopBits;
 
-
-        //// TODO: 
-        //public static SerialPortTransceiver CreateFromId(ushort vid, ushort pid, int baudRate, Parity parity, int dataBits, StopBits stopBits)
-        //{
-        //    // TODO: Limit to windows only
-        //    string? portName = SerialPortUtils.FindPortNameById(vid, pid);
-        //    if (portName is null)
-        //    {
-        //        throw new SystemException("Device not found");
-        //    }
-        //    return new SerialPortTransceiver(portName, baudRate, parity, dataBits, stopBits);
-        //}
-        public SerialPortTransceiver(string portName, int baudRate = 115200, Parity parity = Parity.None, int dataBits = 8, StopBits stopBits = StopBits.One)
+        protected SerialPortTransceiver(SerialTransceiverOptions options)
         {
-            _portName = portName;
-            _baudRate = baudRate;
-            _parity = parity;
-            _dataBits = dataBits;
-            _stopBits = stopBits;
+            _portName = options.PortName;
+            _baudRate = options.BaudRate;
+            _parity = options.Parity;
+            _dataBits = options.DataBits;
+            _stopBits = options.StopBits;
+        }
+
+
+        public SerialPortTransceiver(ILogger logger) : base(logger)
+        {
+            
         }
 
         public override async Task Open(CancellationToken token)

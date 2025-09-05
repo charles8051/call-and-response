@@ -26,7 +26,7 @@ namespace CallAndResponse
         }
         public Transceiver(ILogger logger)
         {
-            Logger = logger;
+            if (logger is not null) Logger = logger;
         }
 
         #region Default Implementations

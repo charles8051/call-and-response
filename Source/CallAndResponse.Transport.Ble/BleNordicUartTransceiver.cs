@@ -13,6 +13,7 @@ using Serilog;
 using System.Threading.Channels;
 using System.Runtime.InteropServices;
 
+// TODO: Create BLE service that is capable of configuring baud rate, parity, etc..
 
 namespace CallAndResponse.Transport.Ble
 {
