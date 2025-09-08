@@ -12,6 +12,7 @@ namespace CallAndResponse
 {
 
     // TODO: refactor to return headers and footers with the payload??
+    // TODO: provide an API to receive spontaneous messages. Will need to provide some events. Primary use case in mind is a COM port barcode scanner that can spit out data at any moment
     public abstract class Transceiver : ITransceiver
     {
         public abstract bool IsOpen { get; protected set; }
@@ -60,6 +61,7 @@ namespace CallAndResponse
             return payload;
         }
 
+        // TODO: Add overload to match a string response
         public async Task<Memory<byte>> SendReceivePerfectMatch(ReadOnlyMemory<byte> writeBytes, ReadOnlyMemory<byte> matchBytes, CancellationToken token)
         {
             Logger.Debug("Sending [{@writeBytes}]", string.Join(",", writeBytes.ToArray().Select(b => $"{b:X}").ToArray()));
@@ -101,7 +103,7 @@ namespace CallAndResponse
             Logger.Verbose("Receiving until [{@terminatorPattern}]", string.Join(",", terminatorPattern));
             var message = await ReceiveMessage((readBytes) =>
             {
-                int terminatorIndex = readBytes.ToArray().Locate(terminatorPattern.ToArray()).FirstOrDefault();
+                int terminatorIndex = readBytes.Span.IndexOf(terminatorPattern.Span);
                 int payloadLength = terminatorIndex < 0 ? 0 : terminatorIndex;
                 return (0, payloadLength);
             }, token).ConfigureAwait(false);
@@ -115,10 +117,10 @@ namespace CallAndResponse
             {
                 int headerIndex = -1;
                 int footerIndex = -1;
-                int offsetFooterIndex = -1; 
+                int offsetFooterIndex = -1;
 
-                headerIndex = readBytes.ToArray().Locate(header.ToArray()).FirstOrDefault();
-                offsetFooterIndex = readBytes.ToArray().Skip(headerIndex + header.Length).ToArray().Locate(footer.ToArray()).FirstOrDefault();
+                headerIndex = readBytes.Span.IndexOf(header.Span);
+                offsetFooterIndex = readBytes.Span.IndexOf(footer.Span);
                 footerIndex = offsetFooterIndex < 0 ? -1 : headerIndex + header.Length + offsetFooterIndex;
 
                 if (headerIndex < 0 || footerIndex < 0)
@@ -142,9 +144,8 @@ namespace CallAndResponse
             var message = await ReceiveMessage((readBytes) =>
             {
                 int matchIndex = -1;
-                matchIndex = readBytes.ToArray().Locate(matchBytes.ToArray()).FirstOrDefault();
-                int payloadLength = matchIndex < 0 ? 0 : matchIndex + matchBytes.Length;
-                return (0, payloadLength);
+                matchIndex = readBytes.Span.IndexOf(matchBytes.Span);
+                return matchIndex >= 0 ? (matchIndex, matchBytes.Length) : (matchIndex, -1);
             }, token).ConfigureAwait(false);
             Logger.Verbose("Received raw [{@message}]", string.Join(",", message.ToArray().Select(b => $"{b:X}").ToArray()));
             return message;
@@ -176,8 +177,6 @@ namespace CallAndResponse
             Logger.Verbose("Received raw [{@message}]", string.Join(",", message.ToArray().Select(b => $"{b:X}").ToArray()));
             return message;
         }
-
-
         #endregion
     }
 }
