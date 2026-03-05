@@ -11,7 +11,7 @@ namespace CallAndResponse.Transport.Serial
         // TODO: Figure out how to accommodate VID PID pairs on all platforms. CIM queries will only work on Windows.
         // Need to allow a list of VID/PID pairs to be specified in case we want to support multiple devices.
 
-        public static TransceiverBuilder UseSerial(this TransceiverBuilder builder, Action<SerialTransceiverOptions> options = null)
+        public static TransceiverBuilder UseSerial(this TransceiverBuilder builder, Action<SerialTransceiverOptions>? options = null)
         {
             var opts = new SerialTransceiverOptions();
             options?.Invoke(opts);
@@ -28,7 +28,7 @@ namespace CallAndResponse.Transport.Serial
 
     public class SerialTransceiverOptions
     {
-        public string PortName { get; set; }
+        public string? PortName { get; set; }
         public int BaudRate { get; set; } = 115200;
         public Parity Parity { get; set; } = Parity.None;
         public StopBits StopBits { get; set; } = StopBits.One;
@@ -44,7 +44,7 @@ namespace CallAndResponse.Transport.Serial
             _options = options;
         }
 
-        public ITransceiver CreateTransceiver(ILogger logger = null)
+        public ITransceiver CreateTransceiver(ILogger? logger = null)
         {
             return new SerialPortTransceiver(_options, logger);
         }

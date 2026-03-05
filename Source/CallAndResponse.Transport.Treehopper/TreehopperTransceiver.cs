@@ -39,24 +39,19 @@ namespace CallAndResponse.Transport.Treehopper
 
         public override async Task<Memory<byte>> ReceiveMessage(Func<ReadOnlyMemory<byte>, (int,int)> detectMessage, CancellationToken token = default)
         {
-            var data = await _board.Uart.ReceiveAsync();
-            data.AsMemory();
-
             var payloadLength = 0;
             var payloadOffset = 0;
-            var numBytesRead = 0;
-
-            var readBytes = new byte[_maxRxBufferSize];
+            var readBytes = new List<byte>();
 
             while (token.IsCancellationRequested == false)
             {
-                if (numBytesRead >= _maxRxBufferSize) throw new IOException("buffer overflow");
+                if (readBytes.Count >= _maxRxBufferSize) throw new IOException("buffer overflow");
                 token.ThrowIfCancellationRequested();
 
                 var newData = await _board.Uart.ReceiveAsync();
-                readBytes.Concat(newData.ToArray());
+                readBytes.AddRange(newData);
 
-                (payloadOffset, payloadLength) = detectMessage(data);
+                (payloadOffset, payloadLength) = detectMessage(readBytes.ToArray());
                 if (payloadLength > 0)
                 {
                     break;

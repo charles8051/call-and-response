@@ -41,7 +41,7 @@ namespace CallAndResponse.Transport.Ble
         private static readonly int _rxBufferSize = 1024;
         private Channel<byte> rxChannel = Channel.CreateBounded<byte>(_rxBufferSize);
 
-        public bool _isConnected = false;
+        private bool _isConnected = false;
         public override bool IsOpen { get { return _isConnected; } protected set { _isConnected = value; } }
 
         //public int ReadTimeout { get; set; } = 500;
@@ -221,7 +221,7 @@ namespace CallAndResponse.Transport.Ble
                 if (payloadLength > 0) break;
             }
             token.ThrowIfCancellationRequested();
-            return data.Take(payloadLength).ToArray().AsMemory();
+            return data.Skip(payloadOffset).Take(payloadLength).ToArray().AsMemory();
         }
 
         private async Task<IDevice> ScanConnectService()

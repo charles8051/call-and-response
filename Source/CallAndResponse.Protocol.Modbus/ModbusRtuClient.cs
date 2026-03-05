@@ -54,10 +54,6 @@ namespace CallAndResponse.Protocol.Modbus
             {
                 throw new ModbusTransportException("Transceiver is cooked", e);
             }
-            catch (Exception e)
-            {
-                throw;
-            }
         }
 
         public async Task WriteRegisters(byte unitIdentifier, ushort startingAddress, ReadOnlyMemory<byte> data, CancellationToken token = default)
@@ -66,22 +62,19 @@ namespace CallAndResponse.Protocol.Modbus
                 .SetUnitIdentifier(unitIdentifier)
                 .SetStartingAddress(startingAddress)
                 .SetFunctionCode(ModbusFunctionCode.WriteMultipleRegisters)
-                .SetNumItems((ushort)data.Length)
+                .SetNumItems((ushort)(data.Length / 2))
                 .SetData(data.ToArray())
                 .Build();
 
             try
             {
-                var response = await _transceiver.SendReceiveExactly(call, 3 + 2, token).ConfigureAwait(false);
+                // FC16 response: unit id (1) + FC (1) + starting address (2) + quantity (2) + CRC (2) = 8 bytes
+                var response = await _transceiver.SendReceiveExactly(call, 8, token).ConfigureAwait(false);
                 ValidateResponse(unitIdentifier, response, ModbusFunctionCode.WriteMultipleRegisters);
             }
             catch (TransceiverTransportException e)
             {
                 throw new ModbusTransportException("Transceiver is cooked", e);
-            }
-            catch (Exception e)
-            {
-                throw;
             }
         }
 
@@ -96,9 +89,9 @@ namespace CallAndResponse.Protocol.Modbus
             {
                 throw new ModbusFramingException("Function code mismatch");
             }
-            if ((header[1] & 0x80) > 1)
+            if ((header[1] & 0x80) != 0)
             {
-                throw new ModbusProtocolException((ModbusProtocolExceptionCode)header[3]);
+                throw new ModbusProtocolException((ModbusProtocolExceptionCode)frame.Span[2]);
             }
 
             // TODO: Validate CRC

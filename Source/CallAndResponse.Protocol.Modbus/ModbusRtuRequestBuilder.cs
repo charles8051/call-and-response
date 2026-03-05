@@ -52,11 +52,15 @@ namespace CallAndResponse.Protocol.Modbus
             };
             if (_startingAddress.HasValue)
             {
-                frame.AddRange(BitConverter.GetBytes(_startingAddress.Value).Reverse());
+                var startingAddressBytes = BitConverter.GetBytes(_startingAddress.Value);
+                Array.Reverse(startingAddressBytes);
+                frame.AddRange(startingAddressBytes);
             }
             if (_numItems.HasValue)
             {
-                frame.AddRange(BitConverter.GetBytes(_numItems.Value).Reverse());
+                var numItemsBytes = BitConverter.GetBytes(_numItems.Value);
+                Array.Reverse(numItemsBytes);
+                frame.AddRange(numItemsBytes);
             }
 
             if (_functionCode == ModbusFunctionCode.ReadHoldingRegisters)
@@ -68,8 +72,11 @@ namespace CallAndResponse.Protocol.Modbus
                 if (_data is null) throw new InvalidOperationException("Must set data for WriteMultipleRegisters");
                 if (_data.Length % 2 != 0) throw new InvalidOperationException("Data must be an even number of bytes");
 
+                // Byte count field: number of data bytes to follow
+                frame.Add((byte)_data.Length);
+
                 // Flip every pair of bytes in _data and then add to frame
-                for (int i = 0; i < _data!.Length; i += 2)
+                for (int i = 0; i < _data.Length; i += 2)
                 {
                     frame.Add(_data[i + 1]);
                     frame.Add(_data[i]);

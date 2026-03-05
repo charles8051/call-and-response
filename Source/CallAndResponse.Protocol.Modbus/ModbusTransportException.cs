@@ -3,7 +3,7 @@
 namespace CallAndResponse.Protocol.Modbus
 {
     [Serializable]
-    internal class ModbusTransportException : Exception
+    public class ModbusTransportException : Exception
     {
         public ModbusTransportException()
         {

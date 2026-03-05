@@ -115,21 +115,26 @@ namespace CallAndResponse
             Logger.Verbose("Receiving until [{@header}] and [{@footer}]", string.Join(",", header), string.Join(",", footer));
             var message = await ReceiveMessage((readBytes) =>
             {
-                int headerIndex = -1;
+                int headerIndex = readBytes.Span.IndexOf(header.Span);
                 int footerIndex = -1;
-                int offsetFooterIndex = -1;
 
-                headerIndex = readBytes.Span.IndexOf(header.Span);
-                offsetFooterIndex = readBytes.Span.IndexOf(footer.Span);
-                footerIndex = offsetFooterIndex < 0 ? -1 : headerIndex + header.Length + offsetFooterIndex;
+                if (headerIndex >= 0)
+                {
+                    // Search for footer only in the portion after the header
+                    var afterHeader = readBytes.Slice(headerIndex + header.Length);
+                    int footerRelativeIndex = afterHeader.Span.IndexOf(footer.Span);
+                    if (footerRelativeIndex >= 0)
+                    {
+                        footerIndex = headerIndex + header.Length + footerRelativeIndex;
+                    }
+                }
 
                 if (headerIndex < 0 || footerIndex < 0)
                 {
                     return (0, 0);
-                } else
+                }
+                else
                 {
-                    //var payloadLength = readBytes.Length - header.Length - footer.Length;
-                    // Use indices to calculate payload length instead
                     var payloadLength = footerIndex - headerIndex - header.Length;
                     return (headerIndex + header.Length, payloadLength);
                 }
