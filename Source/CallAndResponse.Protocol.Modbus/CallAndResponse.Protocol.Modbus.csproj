@@ -22,4 +22,10 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageOutputPath>..\..\Output\Debug</PackageOutputPath>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>CallAndResponse.Test.Unit</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>
