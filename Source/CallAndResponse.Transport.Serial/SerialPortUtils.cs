@@ -38,7 +38,7 @@ namespace CallAndResponse.Transport.Serial
             string pnpString = $"VID_{vid:X4}&PID_{pid:X4}";
 
             //var device = serialPortInfos.Find(device => device.PNPDeviceID == pnpString);
-            var device = serialPortInfos.Where(d => d.PNPDeviceID.Contains(pnpString)).FirstOrDefault();
+            var device = serialPortInfos.Where(d => d.PNPDeviceID != null && d.PNPDeviceID.Contains(pnpString)).FirstOrDefault();
 
 
             if (device != null)

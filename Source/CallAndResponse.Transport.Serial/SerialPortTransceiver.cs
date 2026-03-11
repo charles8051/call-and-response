@@ -35,9 +35,9 @@ namespace CallAndResponse.Transport.Serial
         protected int _dataBits;
         protected StopBits _stopBits;
 
-        public SerialPortTransceiver(SerialTransceiverOptions options, ILogger logger = null) : base(logger)
+        public SerialPortTransceiver(SerialTransceiverOptions options, ILogger? logger = null) : base(logger)
         {
-            _portName = options.PortName;
+            _portName = options.PortName ?? throw new ArgumentNullException(nameof(options.PortName));
             _baudRate = options.BaudRate;
             _parity = options.Parity;
             _dataBits = options.DataBits;
@@ -104,7 +104,11 @@ namespace CallAndResponse.Transport.Serial
                 while (token.IsCancellationRequested == false)
                 {
                     if (numBytesRead >= _maxRxBufferSize) throw new IOException("buffer overflow");
-                    if (_serialPort.BytesToRead == 0) continue;
+                    if (_serialPort.BytesToRead == 0)
+                    {
+                        await Task.Delay(1, token).ConfigureAwait(false);
+                        continue;
+                    }
 
                     using (var cts = new CancellationTokenSource(10))
                     using (var registration = cts.Token.Register(Close))
@@ -131,7 +135,7 @@ namespace CallAndResponse.Transport.Serial
                 token.ThrowIfCancellationRequested();
                 return readBytes.Skip(payloadOffset).Take(payloadLength).ToArray();
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 throw;
             }

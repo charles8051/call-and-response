@@ -110,7 +110,8 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             // Initiate command
             await _transceiver.SendReceiveExactly(new byte[] { (byte)Stm32BootloaderCommand.ReadMemory, 0xEE }, 1, token);
 
-            var addressBytes = BitConverter.GetBytes(address).Reverse().ToArray();
+            var addressBytes = BitConverter.GetBytes(address);
+            Array.Reverse(addressBytes);
             var checksum = (byte)(addressBytes[0] ^ addressBytes[1] ^ addressBytes[2] ^ addressBytes[3]);
 
             var sendBytes = addressBytes.ToList();
@@ -145,7 +146,8 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
 
             await _transceiver.SendReceivePerfectMatch(new byte[] { (byte)Stm32BootloaderCommand.WriteMemory, 0xCE }, new byte[] { Ack }, token);
 
-            var addressBytes = BitConverter.GetBytes(address).Reverse().ToArray();
+            var addressBytes = BitConverter.GetBytes(address);
+            Array.Reverse(addressBytes);
             var checksum = (byte)(addressBytes[0] ^ addressBytes[1] ^ addressBytes[2] ^ addressBytes[3]);
             var sendBytes = addressBytes.ToList();
             sendBytes.Add(checksum);
@@ -173,7 +175,8 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         {
             await _transceiver.SendReceivePerfectMatch(new byte[] { (byte)Stm32BootloaderCommand.Go, 0xDE }, new byte[] { Ack }, token);
 
-            var addressBytes = BitConverter.GetBytes(jumpAddress).Reverse().ToArray();
+            var addressBytes = BitConverter.GetBytes(jumpAddress);
+            Array.Reverse(addressBytes);
             byte addressChecksumByte = (byte)(addressBytes[0] ^ addressBytes[1] ^ addressBytes[2] ^ addressBytes[3]);
             var payload = addressBytes.Append(addressChecksumByte);
             await _transceiver.SendReceivePerfectMatch(payload.ToArray(), new byte[] { Ack }, token);
@@ -197,7 +200,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
                 shorts.Add((ushort)i);
             }
 
-            var payload = shorts.SelectMany((x) => BitConverter.GetBytes(x).Reverse());
+            var payload = shorts.SelectMany((x) => { var b = BitConverter.GetBytes(x); Array.Reverse(b); return b; });
             var checksum = (byte)~(ComputeChecksum(payload.ToArray()));
             payload = payload.Append(checksum);
 
