@@ -63,10 +63,15 @@ Write the ADR when the decision is made, not months later. ADR-0015 is what happ
 Releases are cut by pushing a `v*` tag. `MinVer` derives the package version from that tag, so an
 untagged build produces a `0.0.0-alpha.0`-shaped version rather than a release one.
 
-There is currently no publish automation. The nuget.org workflow was removed pending a rebuild on
-[trusted publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing), which replaces the
-long-lived API key with short-lived OIDC credentials. Until that lands, packing and publishing is manual
-and maintainer-only.
+`.github/workflows/publish.yml` builds, tests, packs the four library projects, and pushes them to
+nuget.org. It authenticates with
+[trusted publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) — GitHub issues a
+short-lived OIDC token, nuget.org exchanges it for an API key valid for one hour. No long-lived key is
+stored in this repository.
+
+Only the maintainer can cut a release. The job runs in the `nuget.org` environment, and the nuget.org
+policy is bound to this repository and to the filename `publish.yml`, so renaming that file stops
+publishing until the policy is updated.
 
 ## Licence
 

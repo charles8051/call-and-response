@@ -94,7 +94,8 @@ application wires them together.
 
 `CallAndResponse`, `CallAndResponse.Transport.Serial`, `CallAndResponse.Protocol.Modbus`, and
 `CallAndResponse.Protocol.Stm32Bootloader` are the packable projects; `MinVer` derives their version from
-the nearest `v*` tag. Publishing is currently manual — see [Releasing](../CONTRIBUTING.md#releasing).
+the nearest `v*` tag. `.github/workflows/publish.yml` publishes them to nuget.org on a `v*` tag — see
+[Releasing](../CONTRIBUTING.md#releasing).
 
 ---
 
