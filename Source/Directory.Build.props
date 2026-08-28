@@ -1,0 +1,29 @@
+<Project>
+
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- Package icon, shared by every packable project under Source/. -->
+  <PropertyGroup>
+    <PackageIcon>icon.png</PackageIcon>
+  </PropertyGroup>
+
+  <!--
+    License and repository metadata, shared by every packable project under Source/.
+    Without PackageLicenseExpression a published .nupkg carries no license at all,
+    regardless of the LICENSE file at the repo root.
+  -->
+  <PropertyGroup>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Copyright>Copyright (c) 2024-2026 Charles Lee</Copyright>
+    <PackageProjectUrl>https://github.com/charles8051/call-and-response</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/charles8051/call-and-response</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)../icon.png" Pack="true" PackagePath="\" />
+    <None Include="$(MSBuildThisFileDirectory)../README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,43 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/Examples/">
+    <Project Path="Examples/Example.Transport.Ble/Example.Transport.Ble.csproj" />
+    <Project Path="Examples/Example.Transport.Serial/Example.Transport.Serial.csproj" />
+  </Folder>
+  <Folder Name="/Solution Items/docs/">
+    <File Path="docs/ARCHITECTURE.md" />
+  </Folder>
+  <Folder Name="/Solution Items/docs/adr/">
+    <File Path="docs/adr/adr-0001-testing-strategy.md" />
+    <File Path="docs/adr/adr-0002-modbus-function-code-expansion.md" />
+    <File Path="docs/adr/adr-0003-serial-transport-revision.md" />
+    <File Path="docs/adr/adr-0004-unify-transceiver-builder-api.md" />
+    <File Path="docs/adr/adr-0005-result-types-for-top-level-itransceiver-api.md" />
+    <File Path="docs/adr/adr-0006-logging-abstraction-strategy.md" />
+    <File Path="docs/adr/adr-0007-byte-source-abstraction-and-transceiver-layering.md" />
+    <File Path="docs/adr/adr-0008-transceiver-lifecycle-observability.md" />
+    <File Path="docs/adr/adr-0009-device-discovery-out-of-scope.md" />
+    <File Path="docs/adr/adr-0010-ibytesource-public-bridge-and-delegate-composition.md" />
+    <File Path="docs/adr/adr-0011-remove-lifecycle-ownership-from-transceiver.md" />
+    <File Path="docs/adr/adr-0012-composition-oriented-api-shapes.md" />
+    <File Path="docs/adr/adr-0013-additional-modern-composable-api-patterns.md" />
+    <File Path="docs/adr/adr-0014-remove-lifecycle-from-ibytesource.md" />
+    <File Path="docs/adr/adr-0015-duplex-pipe-transport-seam.md" />
+    <File Path="docs/adr/README.md" />
+  </Folder>
+  <Folder Name="/Source/">
+    <Project Path="Source/CallAndResponse.Protocol.Modbus/CallAndResponse.Protocol.Modbus.csproj" />
+    <Project Path="Source/CallAndResponse.Protocol.Stm32Bootloader/CallAndResponse.Protocol.Stm32Bootloader.csproj" />
+    <Project Path="Source/CallAndResponse.Transport.BleNordicUart/CallAndResponse.Transport.BleNordicUart.csproj" />
+    <Project Path="Source/CallAndResponse.Transport.Serial/CallAndResponse.Transport.Serial.csproj" />
+    <Project Path="Source/CallAndResponse/CallAndResponse.csproj" />
+  </Folder>
+  <Folder Name="/Test/">
+    <File Path="Test/Directory.Build.props" />
+    <Project Path="Test/CallAndResponse.Test.Unit/CallAndResponse.Test.Unit.csproj" />
+  </Folder>
+</Solution>

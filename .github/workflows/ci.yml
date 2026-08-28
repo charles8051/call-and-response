@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Least privilege: CI only needs to read the tree.
+permissions:
+  contents: read
+
+# A newer push to the same ref makes the older run irrelevant. Cancel it so a
+# self-hosted runner is never occupied by a superseded build.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Trusted events only: pushes to main, and pull requests whose head branch
+  # lives in this repository. Anything from a fork is untrusted code and is
+  # routed to the hosted job below instead — a self-hosted runner would execute
+  # it directly on the machine.
+  build:
+    name: Build and test
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64]
+    container:
+      # .slnx needs SDK 9.0.200+ to parse; 10.0 builds the net8.0 targets fine.
+      image: mcr.microsoft.com/dotnet/sdk:10.0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # MinVer derives the version from the nearest v* tag; the default
+          # shallow checkout fetches none, which would version every build
+          # 0.0.0-alpha.0.
+          fetch-depth: 0
+          # Do not leave a credential in .git/config on the runner host.
+          persist-credentials: false
+
+      # The sdk:10.0 image ships only the 10.0 runtime. Everything here targets
+      # net8.0, so the test host needs the 8.0 runtime to launch the assemblies.
+      # Installing the 8.0 SDK brings it, and keeps tests on the runtime the
+      # library actually targets rather than rolling forward to 10.
+      - name: Install .NET 8 runtime
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore CallAndResponse.slnx
+
+      - name: Build
+        run: dotnet build CallAndResponse.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test CallAndResponse.slnx --configuration Release --no-build --logger "trx;LogFileName=results.trx" --results-directory TestResults
+
+      - name: Pack
+        run: dotnet pack CallAndResponse.slnx --configuration Release --no-build --output artifacts
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-results
+          path: TestResults/*.trx
+          # A build failure leaves no .trx. Do not bury the real error under
+          # a second one about the missing artifact.
+          if-no-files-found: warn
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v5
+        with:
+          name: packages
+          path: artifacts/*.nupkg
+          if-no-files-found: error
+
+  # Fork pull requests. Same checks, GitHub-hosted, so untrusted code runs in a
+  # throwaway VM rather than on the self-hosted runner. Without this job a fork
+  # PR would queue forever against a runner it cannot reach.
+  build-fork:
+    name: Build and test (fork)
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          # 10.0 because .slnx needs SDK 9.0.200+ to parse; 8.0 because that is
+          # what everything targets and what the test host must run on.
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Restore
+        run: dotnet restore CallAndResponse.slnx
+
+      - name: Build
+        run: dotnet build CallAndResponse.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test CallAndResponse.slnx --configuration Release --no-build --logger "trx;LogFileName=results.trx" --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-results
+          path: TestResults/*.trx
+          # A build failure leaves no .trx. Do not bury the real error under
+          # a second one about the missing artifact.
+          if-no-files-found: warn

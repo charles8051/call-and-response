@@ -1,0 +1,98 @@
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using System;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace CallAndResponse.Protocol.Modbus
+{
+    public class ModbusRtuClient : IModbusClient
+    {
+        private ITransceiver _transceiver;
+        private readonly ILogger _logger;
+
+        public ModbusRtuClient(ITransceiver transceiver)
+            : this(transceiver, NullLogger<ModbusRtuClient>.Instance)
+        {
+        }
+
+        public ModbusRtuClient(ITransceiver transceiver, ILogger<ModbusRtuClient> logger)
+        {
+            _transceiver = transceiver;
+            _logger = logger ?? NullLogger<ModbusRtuClient>.Instance;
+        }
+
+        public Task<Memory<byte>> ReadHoldingRegisters(byte unitIdentifier, ushort startingAddress, int numBytes, CancellationToken token = default)
+        {
+            if (numBytes % 2 != 0) throw new ArgumentException();
+            return ReadHoldingRegisters(unitIdentifier, startingAddress, numRegisters:(ushort)(numBytes / 2), token);
+        }
+
+        public async Task<Memory<byte>> ReadHoldingRegisters(byte unitIdentifier, ushort startingAddress, ushort numRegisters, CancellationToken token = default)
+        {
+            var call = new ModbusRtuRequestBuilder()
+                .SetUnitIdentifier(unitIdentifier)
+                .SetStartingAddress(startingAddress)
+                .SetFunctionCode(ModbusFunctionCode.ReadHoldingRegisters)
+                .SetNumItems(numRegisters)
+                .Build();
+
+            try
+            {
+                var response = await _transceiver.SendReceiveExactly(call, 5 + 2 * numRegisters, token).ConfigureAwait(false);
+                ValidateResponse(unitIdentifier, response, ModbusFunctionCode.ReadHoldingRegisters);
+                var payload = response.Slice(3, response.Length - 5);
+                return payload.Flip16BitValues();
+            }
+            catch (TransceiverTransportException e)
+            {
+                _logger.LogError(e, "ReadHoldingRegisters transport failure");
+                throw new ModbusTransportException("Transceiver is cooked", e);
+            }
+        }
+
+        public async Task WriteRegisters(byte unitIdentifier, ushort startingAddress, ReadOnlyMemory<byte> data, CancellationToken token = default)
+        {
+            var call = new ModbusRtuRequestBuilder()
+                .SetUnitIdentifier(unitIdentifier)
+                .SetStartingAddress(startingAddress)
+                .SetFunctionCode(ModbusFunctionCode.WriteMultipleRegisters)
+                .SetNumItems((ushort)(data.Length / 2))
+                .SetData(data.ToArray())
+                .Build();
+
+            try
+            {
+                // FC16 response: unit id (1) + FC (1) + starting address (2) + quantity (2) + CRC (2) = 8 bytes
+                var response = await _transceiver.SendReceiveExactly(call, 8, token).ConfigureAwait(false);
+                ValidateResponse(unitIdentifier, response, ModbusFunctionCode.WriteMultipleRegisters);
+            }
+            catch (TransceiverTransportException e)
+            {
+                _logger.LogError(e, "WriteRegisters transport failure");
+                throw new ModbusTransportException("Transceiver is cooked", e);
+            }
+        }
+
+        private void ValidateResponse(byte unitIdentifier, Memory<byte> frame, ModbusFunctionCode functionCode)
+        {
+            var header = frame.Slice(0, 3).ToArray();
+            if (header[0] != unitIdentifier)
+            {
+                throw new ModbusFramingException("Unit identifier mismatch");
+            }
+            if ((header[1] & 0x7F) != (byte)functionCode)
+            {
+                throw new ModbusFramingException("Function code mismatch");
+            }
+            if ((header[1] & 0x80) != 0)
+            {
+                throw new ModbusProtocolException((ModbusProtocolExceptionCode)frame.Span[2]);
+            }
+
+            // TODO: Validate CRC
+
+        }
+    }
+}

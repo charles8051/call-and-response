@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="CallAndResponse">
+  <title>CallAndResponse</title>
+  <rect width="128" height="128" rx="26" fill="#163A29"/>
+  <!-- call: frame delimiter, message, terminal -->
+  <g stroke="#8A9A5B" stroke-width="6" stroke-linecap="round">
+    <line x1="32" y1="34" x2="32" y2="58"/>
+    <line x1="32" y1="46" x2="88" y2="46"/>
+  </g>
+  <circle cx="95" cy="46" r="7.5" fill="#8A9A5B" stroke="#163A29" stroke-width="2.5"/>
+  <!-- response: mirrored -->
+  <g stroke="#95D5B2" stroke-width="6" stroke-linecap="round">
+    <line x1="96" y1="70" x2="96" y2="94"/>
+    <line x1="96" y1="82" x2="40" y2="82"/>
+  </g>
+  <circle cx="33" cy="82" r="7.5" fill="#95D5B2" stroke="#163A29" stroke-width="2.5"/>
+</svg>
