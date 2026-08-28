@@ -23,6 +23,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Verify the OIDC exchange and packing without pushing to nuget.org'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -76,12 +81,24 @@ jobs:
         with:
           user: ${{ secrets.NUGET_USER }}
 
+      # On a tag push `inputs.dry_run` is null, so this runs. Only a manual
+      # dispatch can skip it, and that is the default for a dispatch -- the
+      # first exercise of a new trusted-publishing policy should not have to be
+      # an irreversible publish.
       - name: Push to nuget.org
+        if: ${{ !inputs.dry_run }}
         run: >
           dotnet nuget push "artifacts/*.nupkg"
           --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
+
+      - name: Dry run complete
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "Dry run: the OIDC exchange with nuget.org succeeded and the"
+          echo "packages below were built. Nothing was pushed."
+          ls -1 artifacts
 
       - name: Upload packages
         if: always()
