@@ -1,8 +1,8 @@
 # CallAndResponse
 
 A .NET library for structured **call-and-response** communication over
-byte-oriented transports. Swap between serial, BLE, and USB without touching
-your protocol code.
+byte-oriented transports. Swap between serial, BLE, and anything else you can
+express as a pipe without touching your protocol code.
 
 The library is pure framing and protocol logic. It never opens, closes, or
 manages transport connections — you provide an active `IDuplexPipe` from
@@ -18,25 +18,26 @@ manages transport connections — you provide an active `IDuplexPipe` from
 
 ```
 dotnet add package CallAndResponse
+dotnet add package CallAndResponse.Transport.Serial
 dotnet add package CallAndResponse.Protocol.Modbus
 ```
 
 ### Quick Example — Modbus over Serial
 
 ```csharp
-using System.IO.Ports;
-using System.IO.Pipelines;
 using CallAndResponse;
 using CallAndResponse.Protocol.Modbus;
+using CallAndResponse.Transport.Serial;
+using RJCP.IO.Ports;
 
 // You own the serial port lifecycle
-using var port = new SerialPort("COM3", 9600, Parity.Even);
+using var port = new SerialPortStream("COM5", 115200, 8, Parity.None, StopBits.One);
 port.Open();
 
-// Bridge to pipes — two lines
-var transceiver = new Transceiver(
-    PipeReader.Create(port.BaseStream),
-    PipeWriter.Create(port.BaseStream));
+// Wrap the open port in a duplex pipe
+await using var pipe = new SerialDuplexPipe(port);
+
+var transceiver = new Transceiver(pipe);
 
 // Use it with a protocol client
 var modbus = new ModbusRtuClient(transceiver);
@@ -87,45 +88,57 @@ if (await bootloader.Ping(cancellationToken))
 | Package | Description |
 |---|---|
 | `CallAndResponse` | Core library — `ITransceiver`, `Transceiver`, framing extensions, exceptions |
-| `CallAndResponse.Protocol.Modbus` | Modbus RTU client (read/write holding registers) |
+| `CallAndResponse.Transport.Serial` | `SerialDuplexPipe` over `RJCP.SerialPortStream` |
+| `CallAndResponse.Protocol.Modbus` | Modbus RTU client (FC03 read, FC16 write) |
 | `CallAndResponse.Protocol.Stm32Bootloader` | STM32 system bootloader commands (read/write/erase flash) |
+
+`CallAndResponse.Transport.BleNordicUart` ships in the repo but is not published
+to NuGet. Reference the project directly, or copy `BleNordicUartPipe.cs`.
 
 ## Architecture
 
-The library has two layers that only depend downward:
+The library has three layers that only depend downward:
 
 ```
-Protocol Layer       (Modbus, STM32 — depends only on ITransceiver)
+Protocol Layer       (Modbus, STM32 — depend only on ITransceiver)
     ↓
-Core Abstraction     (ITransceiver, Transceiver, PipeReader + PipeWriter)
+Core Abstraction     (ITransceiver, Transceiver, framing extensions)
+    ↓
+Transport Layer      (SerialDuplexPipe, BleNordicUartPipe — implement IDuplexPipe)
 ```
 
-- **`Transceiver`** takes `IDuplexPipe` or `PipeReader` + `PipeWriter` and provides
-  framed message exchange. All convenience methods (`SendReceiveExactly`,
-  `ReceiveUntilTerminator`, etc.) are extension methods on `ITransceiver`.
+- **`Transceiver`** takes an `IDuplexPipe`, or a `PipeReader` + `PipeWriter` pair,
+  and provides framed message exchange. All convenience methods
+  (`SendReceiveExactly`, `ReceiveUntilTerminator`, etc.) are extension methods on
+  `ITransceiver`.
 - **Protocol clients** accept `ITransceiver` and use the convenience methods to
-  implement protocol-specific operations.
-- **Transport bridging** is the caller's responsibility. See `Examples/` for
-  complete `IDuplexPipe` implementations for serial and BLE Nordic UART.
+  implement protocol-specific operations. They never reference a transport package.
+- **Transport packages** each provide a single `IDuplexPipe`. The caller owns the
+  underlying connection and its lifecycle.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture
 document.
 
 ## Adding a Transport
 
-Bridge your transport to `System.IO.Pipelines` and create a `Transceiver`:
+A transport package is only worth writing when the adaptation is non-trivial — a
+background pump, a framing quirk, a vendor SDK that is not stream-shaped. Most
+transports need no package at all.
 
 ```csharp
-// For stream-based transports (serial, TCP, etc.)
+// Any Stream — serial, TCP, named pipe. No package required.
 var transceiver = new Transceiver(
     PipeReader.Create(stream),
     PipeWriter.Create(stream));
 
-// For event-based transports (BLE notifications, etc.)
-var rxPipe = new Pipe();
-device.DataReceived += async (s, e) =>
-    await rxPipe.Writer.WriteAsync(e.Data);
-var transceiver = new Transceiver(rxPipe.Reader, txPipeWriter);
+// Any IDuplexPipe, via the AsTransceiver() extension
+ITransceiver transceiver = myDuplexPipe.AsTransceiver();
+
+// Event-based transports (BLE notifications, etc.) need a pipe you drive
+var pipe = new BleNordicUartPipe();
+device.DataReceived += async (s, e) => await pipe.RxWriter.WriteAsync(e.Data);
+// ...and a loop draining pipe.TxReader out to the device
+var transceiver = new Transceiver(pipe);
 ```
 
 See `Examples/Example.Transport.Serial/` and `Examples/Example.Transport.Ble/`
@@ -168,12 +181,14 @@ CallAndResponse/
 │   │   ├── FrameDetectionResult.cs               Frame detection return type
 │   │   └── TransceiverTransportException.cs      I/O-level exception
 │   │
+│   ├── CallAndResponse.Transport.Serial/         SerialDuplexPipe (RJCP)
+│   ├── CallAndResponse.Transport.BleNordicUart/  BleNordicUartPipe (unpublished)
 │   ├── CallAndResponse.Protocol.Modbus/          Modbus RTU protocol
 │   └── CallAndResponse.Protocol.Stm32Bootloader/ STM32 bootloader protocol
 │
 ├── Examples/
-│   ├── Example.Transport.Serial/                 Serial IDuplexPipe + Modbus
-│   └── Example.Transport.Ble/                    BLE Nordic UART IDuplexPipe
+│   ├── Example.Transport.Serial/                 Serial + Modbus
+│   └── Example.Transport.Ble/                    BLE Nordic UART
 │
 ├── Test/
 │   └── CallAndResponse.Test.Unit/                Unit tests (xUnit)
@@ -189,7 +204,7 @@ CallAndResponse/
 
 ```
 dotnet build CallAndResponse.slnx
-dotnet test CallAndResponse.slnx --filter Category!=Integration
+dotnet test CallAndResponse.slnx
 ```
 
 ## License
