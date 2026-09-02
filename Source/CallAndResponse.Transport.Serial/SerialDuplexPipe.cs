@@ -44,20 +44,36 @@ public sealed class SerialDuplexPipe : IDuplexPipe, IAsyncDisposable
     public PipeWriter Output { get; }
 
     public SerialDuplexPipe(SerialPortStream serialPort)
+        // The cast picks the Stream overload; without it this would call itself.
+        : this((Stream)(serialPort ?? throw new ArgumentNullException(nameof(serialPort))))
     {
-        ArgumentNullException.ThrowIfNull(serialPort);
-        Output = PipeWriter.Create(serialPort);
+    }
+
+    /// <summary>
+    /// Test seam. The pump needs nothing beyond <see cref="Stream"/>, so the unit tests can
+    /// drive it with a stream that fails on demand instead of with real hardware. The public
+    /// surface stays pinned to <see cref="SerialPortStream"/>.
+    /// </summary>
+    internal SerialDuplexPipe(Stream stream)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        Output = PipeWriter.Create(stream);
 
         _pumpTask = Task.Factory.StartNew(
-            () => RunPumpAsync(serialPort, _rxPipe.Writer, _cts.Token).GetAwaiter().GetResult(),
+            () => RunPumpAsync(stream, _rxPipe.Writer, _cts.Token).GetAwaiter().GetResult(),
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
     }
 
-    private static async Task RunPumpAsync(SerialPortStream stream, PipeWriter writer, CancellationToken token)
+    private static async Task RunPumpAsync(Stream stream, PipeWriter writer, CancellationToken token)
     {
         var readBuffer = new byte[512];
+
+        // Non-null once the port has failed. Handed to Complete so the reader sees the
+        // real cause instead of an end of stream indistinguishable from a clean close.
+        Exception? failure = null;
+
         try
         {
             while (!token.IsCancellationRequested)
@@ -70,8 +86,23 @@ public sealed class SerialDuplexPipe : IDuplexPipe, IAsyncDisposable
                     bytesRead = await stream.ReadAsync(readBuffer, 0, readBuffer.Length, token)
                         .ConfigureAwait(false);
                 }
-                catch (OperationCanceledException) { break; }
-                catch { break; }
+                catch (OperationCanceledException ex) when (ex.CancellationToken == token)
+                {
+                    // DisposeAsync asked the pump to stop. A deliberate shutdown is a
+                    // clean completion, not a failure. Matching on the exception's own
+                    // token rather than on token.IsCancellationRequested keeps a driver
+                    // that cancels a read for its own reasons from being mistaken for
+                    // our shutdown when the two happen at once.
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    // The port died under us: adapter unplugged, driver error, another
+                    // process taking the handle. Anything that is not our own
+                    // cancellation has to reach the consumer.
+                    failure = ex;
+                    break;
+                }
 
                 if (bytesRead == 0) break;
 
@@ -84,7 +115,7 @@ public sealed class SerialDuplexPipe : IDuplexPipe, IAsyncDisposable
         }
         finally
         {
-            writer.Complete();
+            writer.Complete(failure);
         }
     }
 
