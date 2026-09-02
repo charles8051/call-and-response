@@ -193,12 +193,12 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             // Deliberately bypasses the page-count guard in ExtendedErasePages so that every ushort
             // input still produces byte-for-byte the frame this method has always sent - including
             // the malformed ones at 0xFFFD..0xFFFF, where the half-word collides with a special code.
-            var shorts = new List<ushort>();
-            shorts.Add(numPages);
+            var shorts = new ushort[numPages + 2];
+            shorts[0] = numPages;
 
             for (int i = 0; i < numPages + 1; i++)
             {
-                shorts.Add((ushort)i);
+                shorts[i + 1] = (ushort)i;
             }
 
             return SendExtendedErase(shorts, token);
@@ -240,12 +240,12 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
                 throw new ArgumentException($"At most {MaxErasePageCount} pages can be erased in one command; half-words above 0xFFFC are reserved for mass and bank erase", nameof(pages));
             }
 
-            var shorts = new List<ushort>();
-            shorts.Add((ushort)(pages.Count - 1));
+            var shorts = new ushort[pages.Count + 1];
+            shorts[0] = (ushort)(pages.Count - 1);
 
             for (int i = 0; i < pages.Count; i++)
             {
-                shorts.Add(pages[i]);
+                shorts[i + 1] = pages[i];
             }
 
             return SendExtendedErase(shorts, token);
@@ -253,10 +253,10 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
 
         private Task ExtendedEraseSpecial(ushort code, CancellationToken token)
         {
-            return SendExtendedErase(new List<ushort> { code }, token);
+            return SendExtendedErase(new ushort[] { code }, token);
         }
 
-        private async Task SendExtendedErase(List<ushort> shorts, CancellationToken token)
+        private async Task SendExtendedErase(ushort[] shorts, CancellationToken token)
         {
             await _transceiver.SendReceivePerfectMatch(new byte[] { (byte)Stm32BootloaderCommand.ExtendedEraseMemory, 0xBB }, new byte[] { Ack }, token);
 
