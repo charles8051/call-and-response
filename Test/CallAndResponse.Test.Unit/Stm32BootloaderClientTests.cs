@@ -139,7 +139,8 @@ public class Stm32BootloaderClientTests
     {
         var pipe = new FakeDuplexPipe();
         // SendReceiveExactly(cmd, 5, token) → receive 5 bytes
-        pipe.EnqueueRx(0x00, 0x00, 0x00, 0x00, 0x42);
+        // AN3155 section 3.3: ACK, N = 0x01, PID high, PID low, ACK
+        pipe.EnqueueRx(Ack, 0x01, 0x04, 0x13, Ack);
 
         var client = new Stm32BootloaderClient(pipe.AsTransceiver());
         await client.GetId(Token());
@@ -148,15 +149,79 @@ public class Stm32BootloaderClientTests
     }
 
     [Fact]
-    public async Task GetId_ReturnsLastByteOfResponse()
+    public async Task GetId_ReturnsProductIdFromBytesTwoAndThree()
     {
         var pipe = new FakeDuplexPipe();
-        pipe.EnqueueRx(0x00, 0x00, 0x00, 0x00, 0x42);
+        // 0x0413 is the STM32F4 product id
+        pipe.EnqueueRx(Ack, 0x01, 0x04, 0x13, Ack);
 
         var client = new Stm32BootloaderClient(pipe.AsTransceiver());
         var result = await client.GetId(Token());
 
-        result.Should().Be(0x42);
+        result.Should().Be(0x0413);
+    }
+
+    [Fact]
+    public async Task GetId_DoesNotReturnTrailingAck()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack, 0x01, 0x04, 0x13, Ack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var result = await client.GetId(Token());
+
+        result.Should().NotBe(Ack);
+    }
+
+    [Fact]
+    public async Task GetId_ProductIdExceedingAByte_IsNotTruncated()
+    {
+        var pipe = new FakeDuplexPipe();
+        // 0x0410 is the STM32F1 medium-density product id; it does not fit in a byte
+        pipe.EnqueueRx(Ack, 0x01, 0x04, 0x10, Ack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var result = await client.GetId(Token());
+
+        result.Should().Be(0x0410);
+    }
+
+    [Fact]
+    public async Task GetId_WhenLeadingAckIsWrong_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        // A window shifted by stale bytes: [2..3] would otherwise parse as 0x1234
+        pipe.EnqueueRx(0x00, 0x01, 0x12, 0x34, Ack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.GetId(Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    [Fact]
+    public async Task GetId_WhenNFieldIsWrong_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        // AN3155 fixes N at 0x01 for Get ID
+        pipe.EnqueueRx(Ack, 0x02, 0x12, 0x34, Ack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.GetId(Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    [Fact]
+    public async Task GetId_WhenTrailingAckIsWrong_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack, 0x01, 0x04, 0x13, 0x00);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.GetId(Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
     }
 
     // =========================================================================

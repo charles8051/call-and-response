@@ -80,12 +80,22 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             throw new NotImplementedException();
         }
 
-        public async Task<byte> GetId(CancellationToken token = default)
+        // AN3155 section 3.3: the reply is ACK, N = 0x01, PID high, PID low, ACK.
+        // The product id is the two bytes at [2..3]; index 4 is the closing ACK.
+        public async Task<ushort> GetId(CancellationToken token = default)
         {
             //var result = await _transceiver.SendReceiveHeaderFooter(new byte[] { (byte)Stm32BootloaderCommand.GetId, 0xFD }, new byte[] { Ack }, new byte[] { Ack }, token);
             var result = await _transceiver.SendReceiveExactly(new byte[] { (byte)Stm32BootloaderCommand.GetId, 0xFD }, 5, token);
 
-            return result.Span[4];
+            // SendReceiveExactly only guarantees the byte count, so check the framing before trusting
+            // the payload. A stream left out of sync by an earlier command can deliver five bytes whose
+            // [2..3] would otherwise parse as a plausible id.
+            if (result.Span[0] != Ack || result.Span[1] != 0x01 || result.Span[4] != Ack)
+            {
+                throw new Stm32BootloaderException($"Malformed Get ID response {BitConverter.ToString(result.ToArray())}");
+            }
+
+            return (ushort)((result.Span[2] << 8) | result.Span[3]);
         }
 
         public async Task<ReadOnlyMemory<byte>> ReadMemory(uint address, uint length, CancellationToken token = default)
