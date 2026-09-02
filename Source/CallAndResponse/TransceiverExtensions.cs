@@ -99,7 +99,7 @@ namespace CallAndResponse
         /// <param name="detectMessage">
         /// A function that inspects the accumulated buffer and returns
         /// <see cref="FrameDetectionResult.Incomplete"/> or
-        /// <see cref="FrameDetectionResult.Complete"/>.
+        /// <see cref="FrameDetectionResult.Complete(int, int)"/>.
         /// </param>
         /// <param name="token">Cancellation token.</param>
         /// <returns>The detected payload bytes.</returns>
@@ -140,7 +140,7 @@ namespace CallAndResponse
                 int terminatorIndex = readBytes.Span.IndexOf(terminatorPattern.Span);
                 return terminatorIndex < 0
                     ? FrameDetectionResult.Incomplete
-                    : FrameDetectionResult.Complete(0, terminatorIndex);
+                    : FrameDetectionResult.Complete(0, terminatorIndex, terminatorIndex + terminatorPattern.Length);
             }, token);
         }
 
@@ -177,7 +177,7 @@ namespace CallAndResponse
                 else
                 {
                     var payloadLength = footerIndex - headerIndex - header.Length;
-                    return FrameDetectionResult.Complete(headerIndex + header.Length, payloadLength);
+                    return FrameDetectionResult.Complete(headerIndex + header.Length, payloadLength, footerIndex + footer.Length);
                 }
             }, token);
         }
@@ -216,7 +216,7 @@ namespace CallAndResponse
                 int terminatorIndex = readBytes.Span.IndexOf((byte)terminator);
                 return terminatorIndex < 0
                     ? FrameDetectionResult.Incomplete
-                    : FrameDetectionResult.Complete(0, terminatorIndex);
+                    : FrameDetectionResult.Complete(0, terminatorIndex, terminatorIndex + 1);
             }, token);
         }
 

@@ -35,12 +35,19 @@ namespace CallAndResponse
         /// When complete, the result specifies the payload offset and length within the
         /// buffer; only those bytes are returned to the caller.
         /// </para>
+        /// <para>
+        /// The implementation consumes <see cref="FrameDetectionResult.ConsumedLength"/>
+        /// bytes from the transport, which is the payload end unless the detector reported
+        /// a frame that extends further — a terminator or footer, for instance. Bytes
+        /// beyond the frame stay in the transport for the next call.
+        /// </para>
         /// </summary>
         /// <param name="detectMessage">
         /// A function that inspects the accumulated buffer and returns
         /// <see cref="FrameDetectionResult.Incomplete"/> to continue reading, or
-        /// <see cref="FrameDetectionResult.Complete"/> with offset and length to
-        /// extract the payload and stop.
+        /// <see cref="FrameDetectionResult.Complete(int, int)"/> — or
+        /// <see cref="FrameDetectionResult.Complete(int, int, int)"/> when the frame
+        /// extends past the payload — to extract the payload and stop.
         /// </param>
         /// <param name="token">Cancellation token.</param>
         /// <returns>The detected payload bytes.</returns>

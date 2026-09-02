@@ -94,14 +94,16 @@ namespace CallAndResponse
                 var result = detectMessage(contiguous);
                 if (result.IsComplete)
                 {
-                    LogFrameDetected(_logger, result.PayloadOffset, result.PayloadLength);
+                    LogFrameDetected(_logger, result.PayloadOffset, result.PayloadLength, result.ConsumedLength);
 
                     var payload = contiguous
                         .Slice(result.PayloadOffset, result.PayloadLength)
                         .ToArray();
 
-                    _reader.AdvanceTo(
-                        buffer.GetPosition(result.PayloadOffset + result.PayloadLength));
+                    // Advance past the whole frame, not merely the payload: a detector
+                    // that matched a terminator or footer reports it through
+                    // ConsumedLength so the delimiter cannot satisfy the next receive.
+                    _reader.AdvanceTo(buffer.GetPosition(result.ConsumedLength));
 
                     BytesReceivedCounter.Add(result.PayloadLength);
                     FramesReceivedCounter.Add(1);
@@ -189,8 +191,8 @@ namespace CallAndResponse
         private static partial void LogPipeRead(ILogger logger, long byteCount, long bufferLength);
 
         [LoggerMessage(Level = LogLevel.Trace,
-            Message = "Frame detected at offset {PayloadOffset} with length {PayloadLength}")]
-        private static partial void LogFrameDetected(ILogger logger, int payloadOffset, int payloadLength);
+            Message = "Frame detected at offset {PayloadOffset} with length {PayloadLength}, consuming {ConsumedLength} bytes")]
+        private static partial void LogFrameDetected(ILogger logger, int payloadOffset, int payloadLength, int consumedLength);
 
         [LoggerMessage(Level = LogLevel.Error,
             Message = "Transport closed before frame was complete")]
