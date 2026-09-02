@@ -158,6 +158,13 @@ The value a detect function returns. `FrameDetectionResult.Incomplete` means kee
 reading; `FrameDetectionResult.Complete(payloadOffset, payloadLength)` marks the
 frame found and names the payload slice within the accumulated buffer.
 
+When the frame extends past the payload — a terminator, a footer, a trailing
+checksum — use `FrameDetectionResult.Complete(payloadOffset, payloadLength,
+consumedLength)`. The transceiver returns the payload slice but consumes
+`consumedLength` bytes, so the delimiter cannot satisfy the next receive. The
+two-argument overload consumes to the end of the payload. See
+[ADR-0017](adr/adr-0017-frame-consumed-length.md).
+
 ### Message Detection Pattern
 
 The detect function is the key abstraction that makes the library flexible.
@@ -166,20 +173,23 @@ a complete message has arrived:
 
 ```
 detectMessage(accumulatedBytes) → FrameDetectionResult
-    Complete(offset, length)  →  return bytes[offset..offset+length]
-    Incomplete                →  keep reading
+    Complete(offset, length)            →  return bytes[offset..offset+length],
+                                           consume offset+length
+    Complete(offset, length, consumed)  →  return bytes[offset..offset+length],
+                                           consume `consumed`
+    Incomplete                          →  keep reading
 ```
 
 Built-in convenience methods provide detect functions for common patterns:
 
-| Method | Detection strategy |
-|---|---|
-| `ReceiveExactly(n)` | `buffer.Length >= n` |
-| `ReceiveUntilTerminator(char)` | `IndexOf((byte)terminator)` |
-| `ReceiveUntilTerminatorPattern(bytes)` | `Span.IndexOf(pattern)` |
-| `ReceiveUntilPerfectMatch(bytes)` | `Span.IndexOf(matchBytes)` |
-| `ReceiveUntilHeaderFooterMatch(h, f)` | `IndexOf(header)` then `IndexOf(footer)` after header |
-| `SendReceive(…, detectMessage)` | Caller-supplied function |
+| Method | Detection strategy | Consumes |
+|---|---|---|
+| `ReceiveExactly(n)` | `buffer.Length >= n` | the `n` bytes returned |
+| `ReceiveUntilTerminator(char)` | `IndexOf((byte)terminator)` | payload **and** the terminator |
+| `ReceiveUntilTerminatorPattern(bytes)` | `Span.IndexOf(pattern)` | payload **and** the pattern |
+| `ReceiveUntilPerfectMatch(bytes)` | `Span.IndexOf(matchBytes)` | everything through the match |
+| `ReceiveUntilHeaderFooterMatch(h, f)` | `IndexOf(header)` then `IndexOf(footer)` after header | everything through the footer |
+| `SendReceive(…, detectMessage)` | Caller-supplied function | whatever the detector reports |
 
 `ReceiveUntilIdle` is the exception: it frames on silence rather than on content,
 for unsolicited or streaming data (barcode scanners, GPS NMEA sentences) where the

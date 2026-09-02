@@ -19,6 +19,7 @@ If you want to know *why*, read these.
 | [0011](adr-0011-remove-lifecycle-ownership-from-transceiver.md) | Remove Lifecycle Ownership from ITransceiver | Accepted |
 | [0015](adr-0015-duplex-pipe-transport-seam.md) | Adopt IDuplexPipe as the Transport Seam | Accepted |
 | [0016](adr-0016-stm32-extended-erase-api-shape.md) | Split the STM32 Extended Erase API by AN3155 Erase Form | Accepted |
+| [0017](adr-0017-frame-consumed-length.md) | Separate Payload Extent from Frame Extent in FrameDetectionResult | Accepted |
 
 ADR-0001 and ADR-0005 hold, but each names a type or a target framework that has since changed; both
 carry a note saying which.
