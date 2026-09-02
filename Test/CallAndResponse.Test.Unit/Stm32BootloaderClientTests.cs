@@ -81,13 +81,51 @@ public class Stm32BootloaderClientTests
     }
 
     [Fact]
-    public async Task Ping_WhenUnexpectedByteReceived_ThrowsOperationCanceledException()
+    public async Task Ping_WhenUnexpectedByteReceived_ThrowsStm32BootloaderException()
     {
         var pipe = new FakeDuplexPipe();
         pipe.EnqueueRx(0x00);
 
         var client = new Stm32BootloaderClient(pipe.AsTransceiver());
         var act = async () => await client.Ping(Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    [Fact]
+    public async Task Ping_WhenUnexpectedByteReceived_DoesNotThrowOperationCanceledException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(0x00);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.Ping(Token());
+
+        await act.Should().NotThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task Ping_WhenUnexpectedByteReceived_MessageNamesTheByteThatArrived()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(0xA5);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.Ping(Token());
+
+        (await act.Should().ThrowAsync<Stm32BootloaderException>())
+            .WithMessage("*0xA5*");
+    }
+
+    [Fact]
+    public async Task Ping_WhenTokenIsCancelled_ThrowsOperationCanceledException()
+    {
+        var pipe = new FakeDuplexPipe();
+        // No response bytes enqueued: Ping blocks awaiting the reply until the token trips.
+        using var cts = new CancellationTokenSource(100);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.Ping(cts.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
     }

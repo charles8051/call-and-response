@@ -56,7 +56,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             }
             else
             {
-                throw new OperationCanceledException();
+                throw new Stm32BootloaderException($"Unexpected reply 0x{result.Span[0]:X2} to the sync byte; expected ACK (0x{Ack:X2}) or NACK (0x{Nack:X2}).");
             }
         }
 
