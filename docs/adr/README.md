@@ -22,13 +22,15 @@ If you want to know *why*, read these.
 | [0017](adr-0017-frame-consumed-length.md) | Separate Payload Extent from Frame Extent in FrameDetectionResult | Accepted |
 | [0018](adr-0018-stm32-bootloader-command-surface.md) | Scope of the STM32 Bootloader Command Surface | Accepted |
 | [0019](adr-0019-dual-serial-transport-backends.md) | Ship Serial Transports for Both System.IO.Ports and RJCP.SerialPortStream | Accepted |
+| [0020](adr-0020-serial-package-naming-without-a-type-forward.md) | Package the Serial Backends Without a Type Forward | Accepted |
 
 ADR-0001 and ADR-0005 hold, but each names a type or a target framework that has since changed; both
 carry a note saying which.
 
-ADR-0019 is accepted and partly implemented. `CallAndResponse.Transport.Serial.Bcl` ships; the `.Rjcp`
-rename and type-forward it also decided turned out not to be expressible with `TypeForwardedTo`, and
-the record carries a banner saying what shipped instead.
+ADR-0019 is implemented except for its two packaging decisions, which ADR-0020 replaces. It stays in
+this table because the rest of it — why the two serial read pumps cannot be the same loop — describes
+the code as it ships. It is the one record here that is superseded in part rather than whole, so its
+`superseded_by` names the clauses.
 
 ## Superseded and withdrawn
 
@@ -55,7 +57,10 @@ composition proposals in ADR-0010, ADR-0012, and ADR-0013 unnecessary rather tha
 
 ADR-0019 is the first record to build on that seam rather than rearrange it. Because a transport is now
 a constructor and two properties, a second serial backend is a package rather than an API change, and
-ADR-0003's objection to shipping two serial types no longer holds.
+ADR-0003's objection to shipping two serial types no longer holds. ADR-0020 then corrected how those
+packages are named: ADR-0019 had proposed renaming the existing transport and preserving the old name
+with a type forward, which `TypeForwardedTo` cannot do because it forwards an identity rather than
+renaming one. The incumbent keeps its name and new backends take a suffix.
 
 ## Two notes on numbering
 

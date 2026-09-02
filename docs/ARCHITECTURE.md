@@ -211,7 +211,8 @@ underlying transport resource and its lifecycle.
 ### `SerialDuplexPipe`
 
 Wraps an already-open `RJCP.IO.Ports.SerialPortStream`. Implements
-`IAsyncDisposable`; disposing it stops the background read pump, not the port.
+`IAsyncDisposable`; disposing it stops the background read pump, not the port. This is the
+RJCP-backed transport; `BclSerialDuplexPipe` below is the `System.IO.Ports` one.
 
 The pump distinguishes a clean stop from a dead port. Disposal cancels it and the
 reader sees an ordinary end of stream. Anything else — the adapter unplugged, a
@@ -252,7 +253,9 @@ property for its lifetime, restoring it on disposal when the pump stops in time.
 `DisposeAsync` bounds its wait rather than blocking on a read in flight, so it cannot promise
 the pump has stopped, only that it will within one tick. Consumers are unaffected: they wait
 on `Input`, which cancels immediately. See
-[ADR-0019](adr/adr-0019-dual-serial-transport-backends.md).
+[ADR-0019](adr/adr-0019-dual-serial-transport-backends.md) for the pump, and
+[ADR-0020](adr/adr-0020-serial-package-naming-without-a-type-forward.md) for why the type names are
+asymmetric.
 
 ### `BleNordicUartPipe`
 

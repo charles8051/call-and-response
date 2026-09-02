@@ -31,6 +31,7 @@
     <File Path="docs/adr/adr-0017-frame-consumed-length.md" />
     <File Path="docs/adr/adr-0018-stm32-bootloader-command-surface.md" />
     <File Path="docs/adr/adr-0019-dual-serial-transport-backends.md" />
+    <File Path="docs/adr/adr-0020-serial-package-naming-without-a-type-forward.md" />
     <File Path="docs/adr/README.md" />
   </Folder>
   <Folder Name="/Source/">
