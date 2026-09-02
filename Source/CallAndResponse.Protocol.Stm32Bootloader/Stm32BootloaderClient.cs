@@ -92,7 +92,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             // [2..3] would otherwise parse as a plausible id.
             if (result.Span[0] != Ack || result.Span[1] != 0x01 || result.Span[4] != Ack)
             {
-                throw new InvalidOperationException($"Malformed Get ID response {BitConverter.ToString(result.ToArray())}");
+                throw new Stm32BootloaderException($"Malformed Get ID response {BitConverter.ToString(result.ToArray())}");
             }
 
             return (ushort)((result.Span[2] << 8) | result.Span[3]);
