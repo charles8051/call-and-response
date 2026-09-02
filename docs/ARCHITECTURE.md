@@ -254,7 +254,11 @@ are surfaced as `ModbusProtocolException` with a typed `ModbusProtocolExceptionC
 - `GetId` — Chip ID
 - `ReadMemory` — Read flash/RAM in 256-byte pages
 - `WriteMemory` — Write flash/RAM in 256-byte pages
-- `ExtendedEraseMemoryPages` — Sector erase
+- `ExtendedEraseMass` — Extended erase, AN3155 mass-erase code `0xFFFF`
+- `ExtendedEraseBank` — Extended erase, AN3155 bank codes `0xFFFE` / `0xFFFD`
+- `ExtendedErasePages` — Extended erase of an explicit page list
+  (`ExtendedEraseMemoryPages` is the deprecated pages-`0..N` form of this; see
+  [ADR-0016](adr/adr-0016-stm32-extended-erase-api-shape.md))
 
 ---
 
