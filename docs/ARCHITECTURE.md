@@ -65,6 +65,9 @@ convenience methods without knowing or caring which transport is underneath.
 │   CallAndResponse.Transport.Serial                   │
 │       └─ SerialDuplexPipe(SerialPortStream)          │
 │                                                      │
+│   CallAndResponse.Transport.Serial.Bcl               │
+│       └─ BclSerialDuplexPipe(SerialPort)             │
+│                                                      │
 │   CallAndResponse.Transport.BleNordicUart            │
 │       └─ BleNordicUartPipe()                         │
 └──────────────────────────────────────────────────────┘
@@ -72,8 +75,9 @@ convenience methods without knowing or caring which transport is underneath.
 
 Dependencies flow **downward only**. Protocol packages reference the core
 `CallAndResponse` package and nothing else — they never reference a transport
-package. Transport packages also reference only the core package. The
-application wires them together.
+package. The serial transport packages reference neither: the seam is
+`IDuplexPipe`, which `System.IO.Pipelines` supplies, so a transport needs only
+its own backend. The application wires them together.
 
 `System.IO.Pipelines` is the seam. Any transport you can express as a
 `PipeReader` / `PipeWriter` pair works without a dedicated package: a
@@ -87,12 +91,14 @@ application wires them together.
 | Package | TFM | Dependencies | Purpose |
 |---|---|---|---|
 | `CallAndResponse` | net8.0 | Microsoft.Extensions.Logging.Abstractions, System.IO.Pipelines, System.Diagnostics.DiagnosticSource | Core abstraction: `ITransceiver`, `Transceiver`, `FrameDetectionResult`, exceptions |
-| `CallAndResponse.Transport.Serial` | net8.0 | Core, RJCP.SerialPortStream | Serial port duplex pipe |
+| `CallAndResponse.Transport.Serial` | net8.0 | System.IO.Pipelines, RJCP.SerialPortStream | Serial port duplex pipe over `SerialPortStream` |
+| `CallAndResponse.Transport.Serial.Bcl` | net8.0 | System.IO.Pipelines, System.IO.Ports | Serial port duplex pipe over `SerialPort` |
 | `CallAndResponse.Transport.BleNordicUart` | net8.0 | Core, Plugin.BLE | BLE Nordic UART Service duplex pipe |
 | `CallAndResponse.Protocol.Modbus` | net8.0 | Core | Modbus RTU client (FC03, FC16) |
 | `CallAndResponse.Protocol.Stm32Bootloader` | net8.0 | Core | STM32 system bootloader command set |
 
-`CallAndResponse`, `CallAndResponse.Transport.Serial`, `CallAndResponse.Protocol.Modbus`, and
+`CallAndResponse`, `CallAndResponse.Transport.Serial`, `CallAndResponse.Transport.Serial.Bcl`,
+`CallAndResponse.Protocol.Modbus`, and
 `CallAndResponse.Protocol.Stm32Bootloader` are the packable projects; `MinVer` derives their version from
 the nearest `v*` tag. `.github/workflows/publish.yml` publishes them to nuget.org on a `v*` tag — see
 [Releasing](../CONTRIBUTING.md#releasing).
@@ -220,10 +226,33 @@ await using var pipe = new SerialDuplexPipe(port);
 var transceiver = new Transceiver(pipe);
 ```
 
-RJCP is a third-party dependency and needs a native `libnserial` build on Linux.
-[ADR-0019](adr/adr-0019-dual-serial-transport-backends.md) accepts a second serial backend over
-`System.IO.Ports` so consumers can choose. It is not implemented; this section describes what ships
-today.
+### `BclSerialDuplexPipe`
+
+The same contract over `System.IO.Ports.SerialPort`, in a separate package so consumers
+who cannot take RJCP — a third-party dependency needing a native `libnserial` build on
+Linux — still have a serial transport. Reference one package or the other; the type names
+differ so both can coexist.
+
+```csharp
+using var port = new SerialPort("COM5", 115200, Parity.None, 8, StopBits.One);
+port.Open();
+await using var pipe = new BclSerialDuplexPipe(port);
+var transceiver = new Transceiver(pipe);
+```
+
+The two pumps are not interchangeable, and the difference is forced. On Windows
+`SerialPort.BaseStream.ReadAsync` honours neither the cancellation token nor `ReadTimeout`,
+so this pump uses the synchronous `Read` on its own thread and treats an expired
+`ReadTimeout` as its loop tick. That tick is a caught exception several times a second on an
+idle port, which is why the pump's benign-exception predicate is a per-backend parameter
+rather than shared code.
+
+Two consequences reach the caller. The pipe writes `ReadTimeout` on the port and owns that
+property for its lifetime, restoring it on disposal when the pump stops in time. And
+`DisposeAsync` bounds its wait rather than blocking on a read in flight, so it cannot promise
+the pump has stopped, only that it will within one tick. Consumers are unaffected: they wait
+on `Input`, which cancels immediately. See
+[ADR-0019](adr/adr-0019-dual-serial-transport-backends.md).
 
 ### `BleNordicUartPipe`
 

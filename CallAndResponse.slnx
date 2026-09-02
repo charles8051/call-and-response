@@ -27,6 +27,10 @@
     <File Path="docs/adr/adr-0013-additional-modern-composable-api-patterns.md" />
     <File Path="docs/adr/adr-0014-remove-lifecycle-from-ibytesource.md" />
     <File Path="docs/adr/adr-0015-duplex-pipe-transport-seam.md" />
+    <File Path="docs/adr/adr-0016-stm32-extended-erase-api-shape.md" />
+    <File Path="docs/adr/adr-0017-frame-consumed-length.md" />
+    <File Path="docs/adr/adr-0018-stm32-bootloader-command-surface.md" />
+    <File Path="docs/adr/adr-0019-dual-serial-transport-backends.md" />
     <File Path="docs/adr/README.md" />
   </Folder>
   <Folder Name="/Source/">
@@ -34,6 +38,7 @@
     <Project Path="Source/CallAndResponse.Protocol.Stm32Bootloader/CallAndResponse.Protocol.Stm32Bootloader.csproj" />
     <Project Path="Source/CallAndResponse.Transport.BleNordicUart/CallAndResponse.Transport.BleNordicUart.csproj" />
     <Project Path="Source/CallAndResponse.Transport.Serial/CallAndResponse.Transport.Serial.csproj" />
+    <Project Path="Source/CallAndResponse.Transport.Serial.Bcl/CallAndResponse.Transport.Serial.Bcl.csproj" />
     <Project Path="Source/CallAndResponse/CallAndResponse.csproj" />
   </Folder>
   <Folder Name="/Test/">

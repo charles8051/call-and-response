@@ -26,8 +26,9 @@ If you want to know *why*, read these.
 ADR-0001 and ADR-0005 hold, but each names a type or a target framework that has since changed; both
 carry a note saying which.
 
-ADR-0019 is accepted but not yet implemented. It describes packages and types that do not exist, and
-says so at the top.
+ADR-0019 is accepted and partly implemented. `CallAndResponse.Transport.Serial.Bcl` ships; the `.Rjcp`
+rename and type-forward it also decided turned out not to be expressible with `TypeForwardedTo`, and
+the record carries a banner saying what shipped instead.
 
 ## Superseded and withdrawn
 

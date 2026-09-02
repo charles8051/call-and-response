@@ -14,10 +14,24 @@ superseded_by: ""
 
 **Accepted**
 
-*Implementation status: not implemented. No `.Bcl` or `.Rjcp` package exists yet; the serial transport
-is still the single `CallAndResponse.Transport.Serial` package described in
-[ADR-0015](adr-0015-duplex-pipe-transport-seam.md). This record fixes the design before the code is
-written.*
+*Implementation status: partially implemented. `CallAndResponse.Transport.Serial.Bcl` ships
+`BclSerialDuplexPipe`, and the shared pump of DEC-009 lives in `Source/Shared/SerialReadPump.cs`,
+linked into both transport projects. DEC-001's `.Rjcp` rename and DEC-002's type-forward are **not**
+implemented and are believed unimplementable as written — see the note below. The RJCP transport
+remains `CallAndResponse.Transport.Serial`, unchanged for consumers.*
+
+> **DEC-001 and DEC-002 do not work as written.** `TypeForwardedTo` forwards a type *identity*: the
+> destination assembly must declare a type with the same namespace-qualified name. Forwarding
+> `CallAndResponse.Transport.Serial.SerialDuplexPipe` to a type named `RjcpSerialDuplexPipe` is not
+> something the attribute can express, so the shim package of DEC-002 cannot preserve the existing
+> name while DEC-001 renames the type behind it.
+>
+> The implementation therefore left the RJCP side alone: `CallAndResponse.Transport.Serial` keeps its
+> name and keeps `SerialDuplexPipe`, and only the new backend takes a suffix. That achieves what
+> DEC-002 wanted — no breaking change for existing consumers — with one package fewer and no
+> type-forward, and it retires NEG-005. The cost is naming asymmetry, which ALT-002 had already
+> accepted as the price of not repointing an existing package at a different backend. A superseding
+> record should fold this in properly rather than leaving it as a banner.
 
 ## Context
 
