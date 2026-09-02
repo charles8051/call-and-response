@@ -548,13 +548,30 @@ public class TransceiverTests
     }
 
     [Theory]
-    [InlineData(-1, 1)]
-    [InlineData(1, -1)]
-    public void FrameDetectionResult_NegativeOffsetOrLength_Throws(int payloadOffset, int payloadLength)
+    [InlineData(-1, 1, "payloadOffset")]
+    [InlineData(1, -1, "payloadLength")]
+    public void FrameDetectionResult_NegativeOffsetOrLength_ThreeArgOverloadThrows(
+        int payloadOffset, int payloadLength, string parameterName)
     {
         var act = () => FrameDetectionResult.Complete(payloadOffset, payloadLength, 10);
 
-        act.Should().Throw<ArgumentOutOfRangeException>();
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .WithParameterName(parameterName);
+    }
+
+    [Theory]
+    [InlineData(-1, 1, "payloadOffset")]
+    [InlineData(1, -1, "payloadLength")]
+    [InlineData(int.MinValue, -1, "payloadOffset")]
+    public void FrameDetectionResult_NegativeOffsetOrLength_TwoArgOverloadThrows(
+        int payloadOffset, int payloadLength, string parameterName)
+    {
+        // Both factories reject the same payload bounds, so the public type cannot
+        // represent a frame that does not address the buffer.
+        var act = () => FrameDetectionResult.Complete(payloadOffset, payloadLength);
+
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .WithParameterName(parameterName);
     }
 
     [Fact]
@@ -576,25 +593,6 @@ public class TransceiverTests
 
         act.Should().Throw<ArgumentOutOfRangeException>()
             .WithParameterName("payloadLength");
-    }
-
-    [Fact]
-    public void FrameDetectionResult_PayloadExtentUnderflows_TwoArgOverloadThrows()
-    {
-        // The two-argument overload accepts negative arguments for compatibility, so the
-        // widened sum can also run off the bottom; a cast would wrap it to int.MaxValue.
-        var act = () => FrameDetectionResult.Complete(int.MinValue, -1);
-
-        act.Should().Throw<ArgumentOutOfRangeException>()
-            .WithParameterName("payloadLength");
-    }
-
-    [Fact]
-    public void FrameDetectionResult_PayloadExtentAtIntMinValue_DoesNotWrapToPositive()
-    {
-        var result = FrameDetectionResult.Complete(int.MinValue, 0);
-
-        result.ConsumedLength.Should().Be(int.MinValue);
     }
 
     [Fact]

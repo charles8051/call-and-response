@@ -69,16 +69,13 @@ namespace CallAndResponse
         /// </param>
         /// <param name="payloadLength">Number of payload bytes.</param>
         /// <exception cref="ArgumentOutOfRangeException">
-        /// <paramref name="payloadOffset"/> + <paramref name="payloadLength"/> does not fit in
-        /// an <see cref="int"/>, which would yield a frame extent that cannot address the buffer.
+        /// <paramref name="payloadOffset"/> or <paramref name="payloadLength"/> is negative, or
+        /// their sum does not fit in an <see cref="int"/>, which would yield a frame extent that
+        /// cannot address the buffer.
         /// </exception>
         public static FrameDetectionResult Complete(int payloadOffset, int payloadLength)
         {
-            // Widened deliberately: an int sum would wrap in either direction and publish a
-            // frame extent unrelated to the arguments.
-            long payloadEnd = (long)payloadOffset + payloadLength;
-            if (payloadEnd > int.MaxValue || payloadEnd < int.MinValue)
-                throw new ArgumentOutOfRangeException(nameof(payloadLength), payloadLength, "Payload offset plus payload length does not fit in an Int32.");
+            long payloadEnd = ValidatePayloadExtent(payloadOffset, payloadLength);
 
             return new FrameDetectionResult(true, payloadOffset, payloadLength, (int)payloadEnd);
         }
@@ -105,20 +102,30 @@ namespace CallAndResponse
         /// </exception>
         public static FrameDetectionResult Complete(int payloadOffset, int payloadLength, int consumedLength)
         {
+            long payloadEnd = ValidatePayloadExtent(payloadOffset, payloadLength);
+            if (consumedLength < payloadEnd)
+                throw new ArgumentOutOfRangeException(nameof(consumedLength), consumedLength, "Consumed length cannot be less than the end of the payload.");
+
+            return new FrameDetectionResult(true, payloadOffset, payloadLength, consumedLength);
+        }
+
+        /// <summary>
+        /// Checks the payload bounds both factories share and returns the payload end.
+        /// The sum is widened deliberately: an int sum would wrap and publish a frame extent
+        /// unrelated to the arguments, or let a short <c>consumedLength</c> pass its check.
+        /// </summary>
+        private static long ValidatePayloadExtent(int payloadOffset, int payloadLength)
+        {
             if (payloadOffset < 0)
                 throw new ArgumentOutOfRangeException(nameof(payloadOffset), payloadOffset, "Payload offset cannot be negative.");
             if (payloadLength < 0)
                 throw new ArgumentOutOfRangeException(nameof(payloadLength), payloadLength, "Payload length cannot be negative.");
 
-            // Widened deliberately: an int sum would wrap and let a consumedLength shorter
-            // than the payload pass the check below.
             long payloadEnd = (long)payloadOffset + payloadLength;
             if (payloadEnd > int.MaxValue)
                 throw new ArgumentOutOfRangeException(nameof(payloadLength), payloadLength, "Payload offset plus payload length does not fit in an Int32.");
-            if (consumedLength < payloadEnd)
-                throw new ArgumentOutOfRangeException(nameof(consumedLength), consumedLength, "Consumed length cannot be less than the end of the payload.");
 
-            return new FrameDetectionResult(true, payloadOffset, payloadLength, consumedLength);
+            return payloadEnd;
         }
     }
 }

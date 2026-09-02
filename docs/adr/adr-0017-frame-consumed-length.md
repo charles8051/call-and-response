@@ -72,19 +72,22 @@ Make the frame extent a first-class part of the detection result, distinct from 
   `terminatorIndex + terminatorPattern.Length`, `ReceiveUntilHeaderFooterMatch` →
   `footerIndex + footer.Length`. Their returned payloads are unchanged.
 
-- **DEC-006**: The three-argument overload validates: negative offsets or lengths are rejected, and so
-  is a `consumedLength` shorter than `payloadOffset + payloadLength`, which would hand the caller
-  bytes that are simultaneously left in the transport. The payload extent is computed as `long` in
-  both overloads, because an `int` sum wraps and would let a short `consumedLength` pass that check.
+- **DEC-006**: Both overloads validate the payload bounds identically, through one shared private
+  check: a negative `payloadOffset` or `payloadLength` is rejected, and so is a sum that does not fit
+  in an `int`. The sum is computed as `long`, because an `int` sum wraps and would publish a frame
+  extent unrelated to the arguments. The public type therefore cannot represent a frame that does not
+  address a buffer, whichever factory produced it.
 
-- **DEC-007**: A payload extent that does not fit in an `int` is rejected by both overloads — in
-  either direction, since the two-argument overload still accepts negative arguments and an
-  underflowing sum would wrap to a large positive extent. This is the only guard added to the
-  two-argument overload; it is not a behavioural regression, because such a call already failed —
-  `ReceiveMessage` computed the same wrapped sum and threw from `ReadOnlySequence.GetPosition`. The
-  change is that it now fails at the point of the mistake, with a parameter name, rather than deep in
-  the receive loop. Beyond that the two-argument overload stays unvalidated so that nothing which
-  compiles today starts throwing.
+- **DEC-007**: The three-argument overload additionally rejects a `consumedLength` shorter than
+  `payloadOffset + payloadLength`, which would hand the caller bytes that are simultaneously left in
+  the transport. That is the only difference in validation between the two factories.
+
+  Validating the two-argument overload is not a behavioural regression, even though it was previously
+  unvalidated. Every argument it now rejects already produced a failure: `ReceiveMessage` sliced the
+  payload out of the accumulated buffer and advanced the reader by the same sum, so a negative or
+  wrapped extent threw from `Memory.Slice` or `ReadOnlySequence.GetPosition`. The change is that it
+  now fails at the point of the mistake, naming the parameter, rather than deep in the receive loop.
+  No call that succeeds today starts throwing.
 
 - **DEC-008**: `ReceiveMessage` validates a complete result against the accumulated buffer before it
   touches the reader: offsets and lengths must be non-negative, the payload must lie within the
@@ -121,8 +124,10 @@ Make the frame extent a first-class part of the detection result, distinct from 
   reliance is on a bug, and correcting it is the point of the change, but it is a behavioural break
   rather than a purely additive one.
 
-- **NEG-003**: The two-argument overload validates only overflow while the three-argument one
-  validates fully. The asymmetry is deliberate (DEC-006, DEC-007) and documented, but it is asymmetry.
+- **NEG-003**: The two-argument overload now throws for arguments it used to accept silently. Nothing
+  that works today changes — every rejected argument already failed inside `ReceiveMessage` (DEC-007)
+  — but a consumer whose *test* asserted on a malformed `FrameDetectionResult` rather than on the
+  receive that consumes it will see a different exception, from a different place.
 
 - **NEG-004**: `ReceiveMessage` now carries a bounds check on every detected frame (DEC-008). It is a
   handful of integer comparisons per frame, but it is work the receive loop did not do before, and it
