@@ -223,6 +223,24 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         }
 
         /// <summary>
+        /// Erase Memory by address range. Never implemented — see the remarks.
+        /// </summary>
+        /// <remarks>
+        /// Command 0x43 addresses flash by single-byte page code, not by address and length, and
+        /// mapping a range onto page codes needs a per-device flash layout this library does not
+        /// have. The signature is kept, and made non-callable, only so that binaries compiled
+        /// against an earlier package still resolve the method rather than failing to JIT their
+        /// caller with a <see cref="MissingMethodException"/>. Use
+        /// <see cref="EraseMemory(IEnumerable{byte}, CancellationToken)"/> or
+        /// <see cref="EraseAllMemory"/> instead.
+        /// </remarks>
+        [Obsolete("EraseMemory(address, length) was never implemented; command 0x43 addresses flash by page code, not by address and length. Use EraseMemory(pageNumbers) or EraseAllMemory().", true)]
+        public Task EraseMemory(uint address, ushort length, CancellationToken token = default)
+        {
+            throw new NotImplementedException();
+        }
+
+        /// <summary>
         /// Erase Memory (AN3155 command 0x43) — erases the listed flash memory pages.
         /// Available on USART bootloaders below 3.0; from 3.0 onwards the device exposes
         /// Extended Erase (0x44) instead. Check <see cref="GetSupportedCommands"/> before calling.
@@ -240,7 +258,13 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         /// </para>
         /// </remarks>
         /// <param name="pageNumbers">The flash page codes to erase. Page numbering is device specific.</param>
-        /// <param name="token">Cancellation token. Must allow for the device's page erase time.</param>
+        /// <param name="token">
+        /// Cancellation token. Must allow for the device's page erase time. Cancelling does not
+        /// undo an erase: once the page frame has been sent the device proceeds regardless, so an
+        /// <see cref="OperationCanceledException"/> means the outcome is unknown, not that nothing
+        /// happened. Treat the listed pages as possibly erased and re-establish bootloader state
+        /// before writing or retrying.
+        /// </param>
         /// <exception cref="ArgumentNullException"><paramref name="pageNumbers"/> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="pageNumbers"/> is empty or holds more than 255 pages.</exception>
         /// <exception cref="InvalidOperationException">The device answered NACK or an unexpected byte.</exception>
@@ -287,7 +311,13 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         /// cancellation token against the mass erase time in the device datasheet.
         /// </para>
         /// </remarks>
-        /// <param name="token">Cancellation token. Must allow for the device's mass erase time.</param>
+        /// <param name="token">
+        /// Cancellation token. Must allow for the device's mass erase time. Cancelling does not
+        /// undo the erase: once <c>0xFF 0x00</c> has been sent the device erases regardless, so an
+        /// <see cref="OperationCanceledException"/> means the outcome is unknown, not that nothing
+        /// happened. Treat the whole flash as possibly erased and re-establish bootloader state
+        /// before writing or retrying.
+        /// </param>
         /// <exception cref="InvalidOperationException">The device answered NACK or an unexpected byte.</exception>
         public async Task EraseAllMemory(CancellationToken token = default)
         {
@@ -441,7 +471,13 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         /// re-entered before any further command is issued.
         /// </para>
         /// </remarks>
-        /// <param name="token">Cancellation token. Must allow for the device's mass erase time.</param>
+        /// <param name="token">
+        /// Cancellation token. Must allow for the device's mass erase time. Cancelling does not
+        /// undo the erase: once <c>0x92 0x6D</c> has been accepted the device erases and drops RDP
+        /// regardless, so an <see cref="OperationCanceledException"/> means the outcome is unknown,
+        /// not that nothing happened. Treat the whole flash as possibly erased and re-enter the
+        /// bootloader — the part has probably reset — before issuing anything else.
+        /// </param>
         /// <exception cref="InvalidOperationException">The device answered NACK or an unexpected byte.</exception>
         public async Task ReadoutUnprotect(CancellationToken token = default)
         {
@@ -455,7 +491,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         /// </summary>
         /// <remarks>
         /// Wire format: host sends <c>0xA1 0x5E</c>, then four big-endian parameter frames — start
-        /// address, size in 32-bit words, CRC polynomial, CRC initial value — each of four bytes
+        /// address, size as a count of 32-bit words, CRC polynomial, CRC initial value — each of four bytes
         /// followed by their XOR, each acknowledged with an ACK. The device then answers
         /// <c>ACK, CRC (4 bytes, MSB first), checksum</c>, where the trailing byte is the XOR of
         /// the four CRC bytes.
@@ -466,7 +502,13 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         /// </para>
         /// </remarks>
         /// <param name="address">Start address of the region to checksum.</param>
-        /// <param name="numWords">Region size in 32-bit words. AN3155 requires a multiple of four bytes.</param>
+        /// <param name="numWords">
+        /// Region size as a count of 32-bit words, which is the unit AN3155 Rev 16 §3.13 specifies
+        /// for bytes 8 to 11 — "memory area size (number of 32-bit words)". It is not a byte count:
+        /// <c>numWords = 0x40</c> checksums 0x100 bytes. This is also why the protocol's "must be a
+        /// multiple of 4 bytes" constraint needs no validation here — a whole number of words is
+        /// always a multiple of four bytes.
+        /// </param>
         /// <param name="crcPolynomial">CRC polynomial. Defaults to <see cref="DefaultCrcPolynomial"/>.</param>
         /// <param name="crcInitialValue">CRC seed. Defaults to <see cref="DefaultCrcInitialValue"/>.</param>
         /// <param name="token">Cancellation token.</param>

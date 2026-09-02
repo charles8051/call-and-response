@@ -64,6 +64,21 @@ superseded_by: ""
   size frame, whose byte list then defines it explicitly as `XOR (byte 8, byte 9, byte 10, byte 11)`.
   The phrase is therefore ST's loose synonym for an XOR checksum byte, not a bitwise complement.
 
+- **CTX-009**: The Get Checksum size parameter is a count of 32-bit words, not a byte count. AN3155
+  Rev 16 says so in three places that agree: the §3.13 prose ("the size of the memory area that is
+  expressed in 32-bit words (4 bytes) number"), the p.38 byte list ("Bytes 8 to 11: Memory area size
+  (number of 32-bit words)"), and both figures ("number of 32-bit words (4 bytes) with checksum (1
+  byte)"). The unit is easy to misread — the document's separate statement that "the memory area size
+  must be a multiple of 32 bits (4 bytes)" describes the region, not the encoding of this field — so
+  the parameter is named for its unit and the distinction is stated on the parameter's own
+  documentation.
+
+- **CTX-010**: Removing a public method changes the assembly's metadata, not just its source
+  contract. A binary compiled against the previous package that merely *contains* a call to the
+  removed method fails to JIT its enclosing method with `MissingMethodException`, even on a branch
+  that never executes. That is a worse and less legible failure than the `NotImplementedException`
+  the old method would have thrown.
+
 ## Decision
 
 Implement the four commands whose failure modes are recoverable, and make the three option-byte
@@ -89,7 +104,8 @@ commands non-callable rather than shipping them unverified.
   gives — start address, size in 32-bit words, CRC polynomial, CRC initialization value — each as
   four big-endian bytes plus their XOR, each answered by one ACK, per CTX-006. The polynomial and
   seed default to the STM32 CRC unit's reset values (`0x04C11DB7` and `0xFFFFFFFF`), exposed as
-  `DefaultCrcPolynomial` and `DefaultCrcInitialValue`.
+  `DefaultCrcPolynomial` and `DefaultCrcInitialValue`. The size parameter is a **word count, not a
+  byte count**, per CTX-009; it is named `numWords` and sent unscaled.
 
 - **DEC-004**: `GetProtocolVersion` (0x01) is implemented, returning a new `Stm32VersionInfo` holding
   the version byte and the two legacy option bytes. Host sends `0x01 0xFE` and reads exactly five
@@ -115,6 +131,19 @@ commands non-callable rather than shipping them unverified.
   real silicon. Nothing about this record blocks that; it records why they were not shipped on a
   reading of the application note alone.
 
+- **DEC-009**: `EraseMemory(uint address, ushort length, CancellationToken)` is kept as a declaration
+  marked `[Obsolete(…, true)]` rather than deleted, per CTX-010. Source callers get the same compile
+  error and migration message they would get from a deletion, while the method entry point survives
+  for already-compiled binaries. It is the same treatment DEC-005 gives the protection commands, for
+  the same reason: an error-level `[Obsolete]` communicates more than an absence.
+
+- **DEC-010**: Destructive commands document that cancellation does not roll back the operation.
+  Once `EraseMemory`'s page frame, `EraseAllMemory`'s `0xFF 0x00`, or `ReadoutUnprotect`'s command
+  frame has been accepted, the device proceeds whatever the host does, so an
+  `OperationCanceledException` means the outcome is unknown rather than that nothing happened. This
+  is stated on each command's `token` parameter, where a caller writing the cancellation handler is
+  looking, rather than only in the remarks.
+
 ## Consequences
 
 ### Positive
@@ -136,11 +165,12 @@ commands non-callable rather than shipping them unverified.
 
 ### Negative
 
-- **NEG-001**: `EraseMemory(uint address, ushort length, CancellationToken)` is removed. This is a
-  breaking signature change. It only ever threw, so nothing that worked stops working, but code that
-  compiled against it no longer compiles. Callers move to `EraseMemory(pageNumbers)` or
-  `EraseAllMemory()`, which requires them to know their device's flash page layout — a burden the old
-  signature only appeared to lift.
+- **NEG-001**: `EraseMemory(uint address, ushort length, CancellationToken)` becomes a compile error
+  (CS0619). It only ever threw, so nothing that worked stops working, but code that compiled against
+  it no longer compiles. Callers move to `EraseMemory(pageNumbers)` or `EraseAllMemory()`, which
+  requires them to know their device's flash page layout — a burden the old signature only appeared
+  to lift. Per DEC-009 the declaration is retained, so binary compatibility is preserved; the cost is
+  a dead method kept alive in the type.
 
 - **NEG-002**: `GetProtocolVersion` returns `Task<Stm32VersionInfo>` rather than `Task`, and
   `GetChecksum` returns `Task<uint>` and takes four new parameters. Both are breaking signature
@@ -214,7 +244,8 @@ commands non-callable rather than shipping them unverified.
 ## Implementation Notes
 
 - **IMP-001**: `Source/CallAndResponse.Protocol.Stm32Bootloader/Stm32BootloaderClient.cs` — the four
-  implementations, the `[Obsolete]` attributes on the three deferred commands, the
+  implementations, the `[Obsolete]` attributes on the three deferred commands and on the retained
+  `EraseMemory(uint, ushort, CancellationToken)` declaration, the
   `DefaultCrcPolynomial` and `DefaultCrcInitialValue` constants, the `Stm32VersionInfo` type, and the
   private `SendAndExpectAck`, `ExpectAck`, `EnsureAck`, and `BigEndianWithChecksum` helpers.
 
