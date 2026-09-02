@@ -141,7 +141,23 @@ written.*
 - **DEC-009**: The shared body — the internal `Pipe`, `PipeWriter.Create(stream)` for `Output`, the
   copy/advance/flush loop, and the `writer.Complete(failure)` contract — lives in one file linked into
   both projects. Per CTX-008 the current pump already operates on `Stream`, so this is extraction rather
-  than rewriting. Only the read call, the benign-exception filter, and the dispose join differ.
+  than rewriting. Three things vary by backend and are supplied to it: the read call, the
+  benign-exception predicate, and the dispose join.
+
+- **DEC-009a**: The benign-exception predicate is a parameter of the shared pump, not a shared
+  implementation. It answers "does this exception mean keep reading?" and the two backends disagree
+  completely. RJCP's read path has no benign exception, so its predicate is constant `false` and every
+  exception either matches the `ex.CancellationToken == token` shutdown filter or becomes a failure. The
+  BCL predicate returns `true` for `TimeoutException` and for `IOException` with HResult `0x800705B4`,
+  and `false` for everything else. Sharing the pump without lifting this out would either fault the BCL
+  pipe on every tick or teach the RJCP pipe to swallow a timeout that cannot legitimately reach it.
+
+- **DEC-009b**: The predicate is written narrow and its errors are not symmetric. A predicate that is
+  too narrow misses a timeout form and faults the pipe on an idle port, which announces itself the first
+  time anyone runs it. A predicate that is too broad — `catch (IOException)` without checking the
+  HResult — mistakes a dead port for a tick: the pump spins, the pipe never faults, and the consumer
+  hangs until its own token fires. That is CTX-009's failure reintroduced, silently, in the second
+  backend. When in doubt the predicate returns `false` and lets the exception through as a failure.
 
 ## Consequences
 
@@ -177,6 +193,13 @@ written.*
 
 - **NEG-005**: Three packages where there was one, and a fourth name (`SerialDuplexPipe`) that survives
   only as a forward. The package list gets harder to explain.
+
+- **NEG-006**: The benign-exception predicate of DEC-009a is a correctness surface that did not exist
+  before. Prior to CTX-009 the pump swallowed every exception and completed cleanly, so misjudging one
+  changed nothing a consumer could observe. Now a predicate that is one clause too wide converts a dead
+  port into an indefinite hang, and it is the failure mode least likely to be caught by a test written
+  in the obvious direction. DEC-009b and IMP-005b exist to hold that line, and they are a standing cost
+  rather than a one-time one.
 
 ## Alternatives Considered
 
@@ -236,6 +259,16 @@ written.*
   `Read` rather than `ReadAsync` and `FakeSerialStream.Read` currently throws `NotSupportedException`.
   Cover DEC-004a explicitly: a fake whose `Read` throws `TimeoutException`, and one whose `Read` throws
   `IOException` with HResult `0x800705B4`, must both leave the pipe open rather than faulting it.
+
+- **IMP-005b**: Test DEC-009b in the dangerous direction too. #17's tests assert the pipe faults with
+  the right exception; the benign cases above assert it stays open. Neither catches a too-broad
+  predicate. Add a fake whose `Read` throws an `IOException` with some other HResult and assert the pipe
+  faults with it, so a predicate that widens to bare `IOException` fails the suite rather than shipping.
+
+- **IMP-005c**: The .NET 7 exception change (CTX/DEC-004) means the two benign cases are not both
+  reachable on a given runtime. Write both tests as direct throws from the fake rather than trying to
+  provoke a real timeout, so the suite pins the predicate regardless of which type the runtime in use
+  actually produces.
 
 - **IMP-005a**: Add Tier 4 loopback coverage per [ADR-0001](adr-0001-testing-strategy.md) for both
   backends over the same test body, including the DEC-005 scenario: dispose a pipe, build a second over
