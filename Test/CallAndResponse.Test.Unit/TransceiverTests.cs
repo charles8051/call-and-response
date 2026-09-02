@@ -558,6 +558,62 @@ public class TransceiverTests
     }
 
     [Fact]
+    public void FrameDetectionResult_PayloadExtentOverflows_TwoArgOverloadThrows()
+    {
+        // int arithmetic would wrap to a negative consumed length here.
+        var act = () => FrameDetectionResult.Complete(int.MaxValue, 1);
+
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .WithParameterName("payloadLength");
+    }
+
+    [Fact]
+    public void FrameDetectionResult_PayloadExtentOverflows_ThreeArgOverloadThrows()
+    {
+        // A wrapped sum would let this consumed length pass the "not shorter than the
+        // payload" check.
+        var act = () => FrameDetectionResult.Complete(int.MaxValue, 1, 0);
+
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .WithParameterName("payloadLength");
+    }
+
+    [Fact]
+    public void FrameDetectionResult_PayloadExtentAtIntMaxValue_IsAccepted()
+    {
+        var result = FrameDetectionResult.Complete(int.MaxValue - 1, 1);
+
+        result.ConsumedLength.Should().Be(int.MaxValue);
+    }
+
+    [Fact]
+    public void FrameDetectionResult_ZeroLengthPayloadWithConsumedFrame_IsAccepted()
+    {
+        var result = FrameDetectionResult.Complete(0, 0, 2);
+
+        result.PayloadLength.Should().Be(0);
+        result.ConsumedLength.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ReceiveUntilTerminator_EmptyPayload_StillConsumesTheTerminator()
+    {
+        var pipe = new FakeDuplexPipe();
+        var sut = pipe.AsTransceiver();
+
+        // The terminator is the very first byte: a zero-length frame that must still
+        // move the reader past it.
+        pipe.EnqueueRx((byte)'\n');
+        pipe.EnqueueRx(0x04, 0x13);
+
+        var first = await sut.ReceiveUntilTerminator('\n', Token());
+        var second = await sut.ReceiveExactly(2, Token());
+
+        first.ToArray().Should().BeEmpty();
+        second.ToArray().Should().Equal(0x04, 0x13);
+    }
+
+    [Fact]
     public async Task ReceiveMessage_CustomDetectorConsumingPastPayload_DiscardsTheTrailingBytes()
     {
         var pipe = new FakeDuplexPipe();

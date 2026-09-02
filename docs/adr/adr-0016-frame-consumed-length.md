@@ -74,8 +74,15 @@ Make the frame extent a first-class part of the detection result, distinct from 
 
 - **DEC-006**: The three-argument overload validates: negative offsets or lengths are rejected, and so
   is a `consumedLength` shorter than `payloadOffset + payloadLength`, which would hand the caller
-  bytes that are simultaneously left in the transport. The two-argument overload keeps its existing
-  unvalidated behaviour so that no call that compiles today starts throwing.
+  bytes that are simultaneously left in the transport. The payload extent is computed as `long` in
+  both overloads, because an `int` sum wraps and would let a short `consumedLength` pass that check.
+
+- **DEC-007**: A payload extent that exceeds `int.MaxValue` is rejected by both overloads. This is the
+  only guard added to the two-argument overload; it is not a behavioural regression, because such a
+  call already failed — `ReceiveMessage` computed the same wrapped sum and threw from
+  `ReadOnlySequence.GetPosition`. The change is that it now fails at the point of the mistake, with a
+  parameter name, rather than deep in the receive loop. Beyond that the two-argument overload stays
+  unvalidated so that nothing which compiles today starts throwing.
 
 ## Consequences
 
@@ -104,8 +111,8 @@ Make the frame extent a first-class part of the detection result, distinct from 
   reliance is on a bug, and correcting it is the point of the change, but it is a behavioural break
   rather than a purely additive one.
 
-- **NEG-003**: The two-argument overload is unvalidated while the three-argument one is not. The
-  asymmetry is deliberate (DEC-006) and documented, but it is asymmetry.
+- **NEG-003**: The two-argument overload validates only overflow while the three-argument one
+  validates fully. The asymmetry is deliberate (DEC-006, DEC-007) and documented, but it is asymmetry.
 
 - **NEG-004**: A detector can still report a `consumedLength` past the end of the accumulated buffer.
   That throws from `ReadOnlySequence.GetPosition`, the same way an over-long payload always has. No

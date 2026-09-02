@@ -68,8 +68,18 @@ namespace CallAndResponse
         /// Zero-based index of the first payload byte within the accumulated buffer.
         /// </param>
         /// <param name="payloadLength">Number of payload bytes.</param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="payloadOffset"/> + <paramref name="payloadLength"/> overflows
+        /// <see cref="int"/>, which would yield a frame extent that cannot address the buffer.
+        /// </exception>
         public static FrameDetectionResult Complete(int payloadOffset, int payloadLength)
-            => new FrameDetectionResult(true, payloadOffset, payloadLength, payloadOffset + payloadLength);
+        {
+            long payloadEnd = (long)payloadOffset + payloadLength;
+            if (payloadEnd > int.MaxValue)
+                throw new ArgumentOutOfRangeException(nameof(payloadLength), payloadLength, "Payload offset plus payload length exceeds Int32.MaxValue.");
+
+            return new FrameDetectionResult(true, payloadOffset, payloadLength, (int)payloadEnd);
+        }
 
         /// <summary>
         /// Returns a <see cref="FrameDetectionResult"/> that signals a complete frame
@@ -88,8 +98,8 @@ namespace CallAndResponse
         /// </param>
         /// <exception cref="ArgumentOutOfRangeException">
         /// <paramref name="payloadOffset"/> or <paramref name="payloadLength"/> is negative,
-        /// or <paramref name="consumedLength"/> is less than
-        /// <paramref name="payloadOffset"/> + <paramref name="payloadLength"/>.
+        /// their sum overflows <see cref="int"/>, or <paramref name="consumedLength"/> is less
+        /// than <paramref name="payloadOffset"/> + <paramref name="payloadLength"/>.
         /// </exception>
         public static FrameDetectionResult Complete(int payloadOffset, int payloadLength, int consumedLength)
         {
@@ -97,7 +107,13 @@ namespace CallAndResponse
                 throw new ArgumentOutOfRangeException(nameof(payloadOffset), payloadOffset, "Payload offset cannot be negative.");
             if (payloadLength < 0)
                 throw new ArgumentOutOfRangeException(nameof(payloadLength), payloadLength, "Payload length cannot be negative.");
-            if (consumedLength < payloadOffset + payloadLength)
+
+            // Widened deliberately: an int sum would wrap and let a consumedLength shorter
+            // than the payload pass the check below.
+            long payloadEnd = (long)payloadOffset + payloadLength;
+            if (payloadEnd > int.MaxValue)
+                throw new ArgumentOutOfRangeException(nameof(payloadLength), payloadLength, "Payload offset plus payload length exceeds Int32.MaxValue.");
+            if (consumedLength < payloadEnd)
                 throw new ArgumentOutOfRangeException(nameof(consumedLength), consumedLength, "Consumed length cannot be less than the end of the payload.");
 
             return new FrameDetectionResult(true, payloadOffset, payloadLength, consumedLength);
