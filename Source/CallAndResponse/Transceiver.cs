@@ -94,6 +94,23 @@ namespace CallAndResponse
                 var result = detectMessage(contiguous);
                 if (result.IsComplete)
                 {
+                    if (!FrameFitsBuffer(result, contiguous.Length))
+                    {
+                        // Consume nothing and examine nothing, so the same bytes are
+                        // immediately readable again: the pipe is not at fault, the
+                        // detector is, and a caller that catches this can retry.
+                        _reader.AdvanceTo(buffer.Start);
+
+                        LogInvalidFrameReported(
+                            _logger, result.PayloadOffset, result.PayloadLength, result.ConsumedLength, contiguous.Length);
+
+                        throw new ArgumentException(
+                            $"The detect function reported a frame (payload offset {result.PayloadOffset}, " +
+                            $"payload length {result.PayloadLength}, consumed length {result.ConsumedLength}) " +
+                            $"that does not fit the {contiguous.Length}-byte accumulated buffer.",
+                            nameof(detectMessage));
+                    }
+
                     LogFrameDetected(_logger, result.PayloadOffset, result.PayloadLength, result.ConsumedLength);
 
                     var payload = contiguous
@@ -120,6 +137,22 @@ namespace CallAndResponse
                         "Transport closed before frame was complete");
                 }
             }
+        }
+
+        /// <summary>
+        /// Whether a detected frame addresses only bytes that are actually buffered.
+        /// A detector is caller-supplied code, so its result is validated before it is
+        /// allowed to move the reader.
+        /// </summary>
+        private static bool FrameFitsBuffer(in FrameDetectionResult result, int bufferLength)
+        {
+            if (result.PayloadOffset < 0 || result.PayloadLength < 0 || result.ConsumedLength < 0)
+                return false;
+
+            long payloadEnd = (long)result.PayloadOffset + result.PayloadLength;
+            return payloadEnd <= bufferLength
+                && result.ConsumedLength >= payloadEnd
+                && result.ConsumedLength <= bufferLength;
         }
 
         /// <inheritdoc />
@@ -193,6 +226,11 @@ namespace CallAndResponse
         [LoggerMessage(Level = LogLevel.Trace,
             Message = "Frame detected at offset {PayloadOffset} with length {PayloadLength}, consuming {ConsumedLength} bytes")]
         private static partial void LogFrameDetected(ILogger logger, int payloadOffset, int payloadLength, int consumedLength);
+
+        [LoggerMessage(Level = LogLevel.Error,
+            Message = "Detect function reported a frame at offset {PayloadOffset} with length {PayloadLength} consuming {ConsumedLength} bytes, but only {BufferLength} bytes are buffered")]
+        private static partial void LogInvalidFrameReported(
+            ILogger logger, int payloadOffset, int payloadLength, int consumedLength, int bufferLength);
 
         [LoggerMessage(Level = LogLevel.Error,
             Message = "Transport closed before frame was complete")]

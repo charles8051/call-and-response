@@ -579,6 +579,25 @@ public class TransceiverTests
     }
 
     [Fact]
+    public void FrameDetectionResult_PayloadExtentUnderflows_TwoArgOverloadThrows()
+    {
+        // The two-argument overload accepts negative arguments for compatibility, so the
+        // widened sum can also run off the bottom; a cast would wrap it to int.MaxValue.
+        var act = () => FrameDetectionResult.Complete(int.MinValue, -1);
+
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .WithParameterName("payloadLength");
+    }
+
+    [Fact]
+    public void FrameDetectionResult_PayloadExtentAtIntMinValue_DoesNotWrapToPositive()
+    {
+        var result = FrameDetectionResult.Complete(int.MinValue, 0);
+
+        result.ConsumedLength.Should().Be(int.MinValue);
+    }
+
+    [Fact]
     public void FrameDetectionResult_PayloadExtentAtIntMaxValue_IsAccepted()
     {
         var result = FrameDetectionResult.Complete(int.MaxValue - 1, 1);
@@ -633,6 +652,71 @@ public class TransceiverTests
 
         first.ToArray().Should().Equal(0x01, 0x02, 0x03);
         second.ToArray().Should().Equal(0x04, 0x13);
+    }
+
+    // =========================================================================
+    // Detector results that do not fit the buffer
+    // =========================================================================
+
+    [Fact]
+    public async Task ReceiveMessage_DetectorConsumesPastBufferEnd_ThrowsAndLeavesThePipeIntact()
+    {
+        var pipe = new FakeDuplexPipe();
+        var sut = pipe.AsTransceiver();
+
+        pipe.EnqueueRx(0x01, 0x02, 0x03);
+
+        var act = async () => await sut.ReceiveMessage(
+            readBytes => readBytes.Length >= 3
+                ? FrameDetectionResult.Complete(0, 3, 99)
+                : FrameDetectionResult.Incomplete,
+            Token());
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("detectMessage");
+
+        // Nothing was consumed, so the same bytes are still there for the next receive.
+        var recovered = await sut.ReceiveExactly(3, Token());
+        recovered.ToArray().Should().Equal(0x01, 0x02, 0x03);
+    }
+
+    [Fact]
+    public async Task ReceiveMessage_DetectorPayloadPastBufferEnd_ThrowsAndLeavesThePipeIntact()
+    {
+        var pipe = new FakeDuplexPipe();
+        var sut = pipe.AsTransceiver();
+
+        pipe.EnqueueRx(0x01, 0x02, 0x03);
+
+        var act = async () => await sut.ReceiveMessage(
+            readBytes => readBytes.Length >= 3
+                ? FrameDetectionResult.Complete(2, 10)
+                : FrameDetectionResult.Incomplete,
+            Token());
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("detectMessage");
+
+        var recovered = await sut.ReceiveExactly(3, Token());
+        recovered.ToArray().Should().Equal(0x01, 0x02, 0x03);
+    }
+
+    [Fact]
+    public async Task ReceiveMessage_DetectorConsumesTheWholeBuffer_IsAccepted()
+    {
+        var pipe = new FakeDuplexPipe();
+        var sut = pipe.AsTransceiver();
+
+        pipe.EnqueueRx(0x01, 0x02, 0x03);
+
+        // Consuming exactly to buffer.End is the boundary, not an overrun.
+        var result = await sut.ReceiveMessage(
+            readBytes => readBytes.Length >= 3
+                ? FrameDetectionResult.Complete(0, 1, 3)
+                : FrameDetectionResult.Incomplete,
+            Token());
+
+        result.ToArray().Should().Equal(0x01);
     }
 
     // =========================================================================

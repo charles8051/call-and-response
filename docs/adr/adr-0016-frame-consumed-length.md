@@ -77,12 +77,22 @@ Make the frame extent a first-class part of the detection result, distinct from 
   bytes that are simultaneously left in the transport. The payload extent is computed as `long` in
   both overloads, because an `int` sum wraps and would let a short `consumedLength` pass that check.
 
-- **DEC-007**: A payload extent that exceeds `int.MaxValue` is rejected by both overloads. This is the
-  only guard added to the two-argument overload; it is not a behavioural regression, because such a
-  call already failed — `ReceiveMessage` computed the same wrapped sum and threw from
-  `ReadOnlySequence.GetPosition`. The change is that it now fails at the point of the mistake, with a
-  parameter name, rather than deep in the receive loop. Beyond that the two-argument overload stays
-  unvalidated so that nothing which compiles today starts throwing.
+- **DEC-007**: A payload extent that does not fit in an `int` is rejected by both overloads — in
+  either direction, since the two-argument overload still accepts negative arguments and an
+  underflowing sum would wrap to a large positive extent. This is the only guard added to the
+  two-argument overload; it is not a behavioural regression, because such a call already failed —
+  `ReceiveMessage` computed the same wrapped sum and threw from `ReadOnlySequence.GetPosition`. The
+  change is that it now fails at the point of the mistake, with a parameter name, rather than deep in
+  the receive loop. Beyond that the two-argument overload stays unvalidated so that nothing which
+  compiles today starts throwing.
+
+- **DEC-008**: `ReceiveMessage` validates a complete result against the accumulated buffer before it
+  touches the reader: offsets and lengths must be non-negative, the payload must lie within the
+  buffer, and `ConsumedLength` must be between the payload end and the buffer end inclusive. A result
+  that fails throws `ArgumentException` naming `detectMessage`, and the reader is advanced to
+  `buffer.Start` — consuming and examining nothing — so the bytes remain immediately readable and a
+  caller that catches the exception can retry. A detector is caller-supplied code and
+  `FrameDetectionResult` cannot know the buffer length, so this check can only live here.
 
 ## Consequences
 
@@ -114,9 +124,10 @@ Make the frame extent a first-class part of the detection result, distinct from 
 - **NEG-003**: The two-argument overload validates only overflow while the three-argument one
   validates fully. The asymmetry is deliberate (DEC-006, DEC-007) and documented, but it is asymmetry.
 
-- **NEG-004**: A detector can still report a `consumedLength` past the end of the accumulated buffer.
-  That throws from `ReadOnlySequence.GetPosition`, the same way an over-long payload always has. No
-  new guard was added in `Transceiver` for it.
+- **NEG-004**: `ReceiveMessage` now carries a bounds check on every detected frame (DEC-008). It is a
+  handful of integer comparisons per frame, but it is work the receive loop did not do before, and it
+  changes the exception a malformed detector produces from `ArgumentOutOfRangeException` (raised by
+  `Memory.Slice` or `ReadOnlySequence.GetPosition`) to `ArgumentException` naming `detectMessage`.
 
 ## Alternatives Considered
 

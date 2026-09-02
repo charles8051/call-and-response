@@ -69,14 +69,16 @@ namespace CallAndResponse
         /// </param>
         /// <param name="payloadLength">Number of payload bytes.</param>
         /// <exception cref="ArgumentOutOfRangeException">
-        /// <paramref name="payloadOffset"/> + <paramref name="payloadLength"/> overflows
-        /// <see cref="int"/>, which would yield a frame extent that cannot address the buffer.
+        /// <paramref name="payloadOffset"/> + <paramref name="payloadLength"/> does not fit in
+        /// an <see cref="int"/>, which would yield a frame extent that cannot address the buffer.
         /// </exception>
         public static FrameDetectionResult Complete(int payloadOffset, int payloadLength)
         {
+            // Widened deliberately: an int sum would wrap in either direction and publish a
+            // frame extent unrelated to the arguments.
             long payloadEnd = (long)payloadOffset + payloadLength;
-            if (payloadEnd > int.MaxValue)
-                throw new ArgumentOutOfRangeException(nameof(payloadLength), payloadLength, "Payload offset plus payload length exceeds Int32.MaxValue.");
+            if (payloadEnd > int.MaxValue || payloadEnd < int.MinValue)
+                throw new ArgumentOutOfRangeException(nameof(payloadLength), payloadLength, "Payload offset plus payload length does not fit in an Int32.");
 
             return new FrameDetectionResult(true, payloadOffset, payloadLength, (int)payloadEnd);
         }
@@ -112,7 +114,7 @@ namespace CallAndResponse
             // than the payload pass the check below.
             long payloadEnd = (long)payloadOffset + payloadLength;
             if (payloadEnd > int.MaxValue)
-                throw new ArgumentOutOfRangeException(nameof(payloadLength), payloadLength, "Payload offset plus payload length exceeds Int32.MaxValue.");
+                throw new ArgumentOutOfRangeException(nameof(payloadLength), payloadLength, "Payload offset plus payload length does not fit in an Int32.");
             if (consumedLength < payloadEnd)
                 throw new ArgumentOutOfRangeException(nameof(consumedLength), consumedLength, "Consumed length cannot be less than the end of the payload.");
 
