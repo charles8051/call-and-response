@@ -473,4 +473,30 @@ public class Stm32BootloaderClientTests
             0x00, 0x01,
             0x00);
     }
+
+    [Fact]
+    public async Task ExtendedEraseMemoryPages_ObsoleteShim_AtReservedCodeBoundary_StillSendsLegacyFrame()
+    {
+        var pipe = new FakeDuplexPipe();
+        EnqueueAck(pipe);
+        EnqueueAck(pipe);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        // 0xFFFD collides with the bank 2 special code, so the page-list guard on
+        // ExtendedErasePages rejects it. The shim must not inherit that guard: it has always
+        // sent this (malformed) frame and existing callers must keep getting it.
+#pragma warning disable CS0618 // covering the deprecated shim's wire format deliberately
+        await client.ExtendedEraseMemoryPages(0xFFFD, Token(15000));
+#pragma warning restore CS0618
+
+        // cmd_frame(2) + N + 0xFFFE page half-words + checksum
+        pipe.SentBytes.Count.Should().Be(2 + (2 * (0xFFFE + 1)) + 1);
+        pipe.SentBytes.Should().StartWith(new byte[]
+        {
+            (byte)Stm32BootloaderCommand.ExtendedEraseMemory, 0xBB,
+            0xFF, 0xFD,
+            0x00, 0x00,
+            0x00, 0x01
+        });
+    }
 }

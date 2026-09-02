@@ -190,12 +190,18 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         [Obsolete("Sends AN3155 half-word N, so it erases pages 0 through numPages inclusive - one more page than the name suggests - and it cannot start above page 0. Use ExtendedErasePages, ExtendedEraseMass, or ExtendedEraseBank instead.")]
         public Task ExtendedEraseMemoryPages(ushort numPages, CancellationToken token = default)
         {
-            var pages = new ushort[numPages + 1];
-            for (int i = 0; i < pages.Length; i++)
+            // Deliberately bypasses the page-count guard in ExtendedErasePages so that every ushort
+            // input still produces byte-for-byte the frame this method has always sent - including
+            // the malformed ones at 0xFFFD..0xFFFF, where the half-word collides with a special code.
+            var shorts = new List<ushort>();
+            shorts.Add(numPages);
+
+            for (int i = 0; i < numPages + 1; i++)
             {
-                pages[i] = (ushort)i;
+                shorts.Add((ushort)i);
             }
-            return ExtendedErasePages(pages, token);
+
+            return SendExtendedErase(shorts, token);
         }
 
         // Only available for USART Booloader 3.0+

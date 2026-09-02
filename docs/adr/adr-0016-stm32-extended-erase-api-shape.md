@@ -66,8 +66,13 @@ superseded_by: ""
 - **DEC-005**: The new methods follow the file's existing no-`Async`-suffix convention rather than the
   `…Async` names sketched in the issue, per the "match the surrounding file" rule in `CONTRIBUTING.md`.
 
-- **DEC-006**: `ExtendedEraseMemoryPages` is kept as an `[Obsolete]` shim that delegates to
-  `ExtendedErasePages` with pages `0..numPages`. Its bytes on the wire are unchanged.
+- **DEC-006**: `ExtendedEraseMemoryPages` is kept as an `[Obsolete]` shim. It builds the legacy
+  half-word list — `numPages` followed by pages `0..numPages` — and hands it to the shared send path,
+  deliberately bypassing the `ExtendedErasePages` guards. Every `ushort` input therefore produces
+  byte-for-byte the frame it has always produced, including the malformed frames at `0xFFFD..0xFFFF`
+  where the half-word collides with a special code. Routing the shim through the validated public
+  method would have turned those inputs into an `ArgumentException`, which is a behaviour change the
+  deprecation is not entitled to make.
 
 ## Consequences
 
@@ -85,8 +90,8 @@ superseded_by: ""
 - **POS-004**: Each method has one payload shape, so there is no argument value that silently changes
   what gets sent.
 
-- **POS-005**: No breaking change. Existing callers keep compiling and keep sending identical bytes;
-  they get a deprecation warning pointing at the replacement.
+- **POS-005**: Existing callers keep compiling and keep sending identical bytes for every input; the
+  only compile-time effect is a deprecation warning naming the replacements.
 
 ### Negative
 
@@ -94,7 +99,13 @@ superseded_by: ""
   shared privately, but the public surface is wider.
 
 - **NEG-002**: The obsolete shim keeps the misleading `numPages` semantics alive until it is removed in
-  a future major version.
+  a future major version, and duplicates the legacy half-word construction rather than reusing the
+  validated public method.
+
+- **NEG-004**: `[Obsolete]` emits CS0618 at every existing call site. A consumer building with
+  `TreatWarningsAsErrors` will see that as a build failure on upgrade until they migrate or suppress
+  it. This is the accepted cost of a compiler-guided deprecation; it is source- and binary-compatible,
+  not warning-compatible, and the release notes should say so.
 
 - **NEG-003**: `ExtendedErasePages` allocates a list of the caller's page numbers. For a large erase
   this is a bigger allocation than the old contiguous loop, though still bounded by the frame the
@@ -131,6 +142,16 @@ superseded_by: ""
 
 - **ALT-008**: **Rejection Reason**: It is a published package method with a straightforward
   replacement. `[Obsolete]` costs one shim and gives downstream callers a compiler-guided migration.
+
+### Keep `ExtendedEraseMemoryPages` without `[Obsolete]`
+
+- **ALT-009**: **Description**: Retain the old method silently so no consumer sees CS0618, and rely on
+  documentation to steer callers to the new methods.
+
+- **ALT-010**: **Rejection Reason**: A silent method that erases one more page than its name says, and
+  cannot start above page 0, is exactly the trap this ADR exists to close. The warning is the
+  migration signal; a doc note reaches nobody who is not already reading the docs. See NEG-004 for the
+  cost this imposes on warning-as-error builds.
 
 ## Implementation Notes
 
