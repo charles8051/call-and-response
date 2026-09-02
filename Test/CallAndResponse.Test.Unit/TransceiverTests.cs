@@ -441,6 +441,27 @@ public class TransceiverTests
     }
 
     [Fact]
+    public async Task ReceiveUntilHeaderFooterMatch_LeadingBytesAndMultiByteHeader_ConsumesTheWholeFrame()
+    {
+        var pipe = new FakeDuplexPipe();
+        var sut = pipe.AsTransceiver();
+
+        // Every offset that could go missing from the consumed length is non-zero here:
+        // two bytes of noise before a two-byte header, and a two-byte footer. The frame
+        // ends at index 8, so a consumed length measured from anywhere but the start of
+        // the buffer leaves part of it behind and shifts the next read.
+        pipe.EnqueueRx(0x00, 0x00, 0xAA, 0xAA, 0x01, 0x02, 0xBB, 0xBB);
+        pipe.EnqueueRx(0x04, 0x13);
+
+        var first = await sut.ReceiveUntilHeaderFooterMatch(
+            new byte[] { 0xAA, 0xAA }, new byte[] { 0xBB, 0xBB }, Token());
+        var second = await sut.ReceiveExactly(2, Token());
+
+        first.ToArray().Should().Equal(0x01, 0x02);
+        second.ToArray().Should().Equal(0x04, 0x13);
+    }
+
+    [Fact]
     public async Task ReceiveUntilHeaderFooterMatch_ThenPerfectMatch_StaleFooterDoesNotSatisfyTheNextCommand()
     {
         var pipe = new FakeDuplexPipe();
