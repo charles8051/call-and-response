@@ -275,8 +275,12 @@ Exception
 ├── ModbusFramingException             Modbus response framing error (unit ID or
 │                                      function code mismatch)
 │
-└── ModbusTransportException           Wraps TransceiverTransportException for
-                                       Modbus-specific context
+├── ModbusTransportException           Wraps TransceiverTransportException for
+│                                      Modbus-specific context
+│
+└── Stm32BootloaderException           STM32 bootloader protocol violation
+                                       (e.g. a sync-byte reply that is neither
+                                       ACK nor NACK)
 ```
 
 ---
