@@ -139,7 +139,8 @@ public class Stm32BootloaderClientTests
     {
         var pipe = new FakeDuplexPipe();
         // SendReceiveExactly(cmd, 5, token) → receive 5 bytes
-        pipe.EnqueueRx(0x00, 0x00, 0x00, 0x00, 0x42);
+        // AN3155 section 3.3: ACK, N = 0x01, PID high, PID low, ACK
+        pipe.EnqueueRx(Ack, 0x01, 0x04, 0x13, Ack);
 
         var client = new Stm32BootloaderClient(pipe.AsTransceiver());
         await client.GetId(Token());
@@ -148,15 +149,41 @@ public class Stm32BootloaderClientTests
     }
 
     [Fact]
-    public async Task GetId_ReturnsLastByteOfResponse()
+    public async Task GetId_ReturnsProductIdFromBytesTwoAndThree()
     {
         var pipe = new FakeDuplexPipe();
-        pipe.EnqueueRx(0x00, 0x00, 0x00, 0x00, 0x42);
+        // 0x0413 is the STM32F4 product id
+        pipe.EnqueueRx(Ack, 0x01, 0x04, 0x13, Ack);
 
         var client = new Stm32BootloaderClient(pipe.AsTransceiver());
         var result = await client.GetId(Token());
 
-        result.Should().Be(0x42);
+        result.Should().Be(0x0413);
+    }
+
+    [Fact]
+    public async Task GetId_DoesNotReturnTrailingAck()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack, 0x01, 0x04, 0x13, Ack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var result = await client.GetId(Token());
+
+        result.Should().NotBe(Ack);
+    }
+
+    [Fact]
+    public async Task GetId_ProductIdExceedingAByte_IsNotTruncated()
+    {
+        var pipe = new FakeDuplexPipe();
+        // 0x0410 is the STM32F1 medium-density product id; it does not fit in a byte
+        pipe.EnqueueRx(Ack, 0x01, 0x04, 0x10, Ack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var result = await client.GetId(Token());
+
+        result.Should().Be(0x0410);
     }
 
     // =========================================================================
