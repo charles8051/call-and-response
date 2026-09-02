@@ -207,12 +207,23 @@ underlying transport resource and its lifecycle.
 Wraps an already-open `RJCP.IO.Ports.SerialPortStream`. Implements
 `IAsyncDisposable`; disposing it stops the background read pump, not the port.
 
+The pump distinguishes a clean stop from a dead port. Disposal cancels it and the
+reader sees an ordinary end of stream. Anything else — the adapter unplugged, a
+driver error, another process taking the handle — is captured and passed to
+`writer.Complete(failure)`, so the consumer's next read throws the real cause
+rather than reporting a truncated frame.
+
 ```csharp
 using var port = new SerialPortStream("COM5", 115200, 8, Parity.None, StopBits.One);
 port.Open();
 await using var pipe = new SerialDuplexPipe(port);
 var transceiver = new Transceiver(pipe);
 ```
+
+RJCP is a third-party dependency and needs a native `libnserial` build on Linux.
+[ADR-0019](adr/adr-0019-dual-serial-transport-backends.md) accepts a second serial backend over
+`System.IO.Ports` so consumers can choose. It is not implemented; this section describes what ships
+today.
 
 ### `BleNordicUartPipe`
 

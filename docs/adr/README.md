@@ -21,9 +21,13 @@ If you want to know *why*, read these.
 | [0016](adr-0016-stm32-extended-erase-api-shape.md) | Split the STM32 Extended Erase API by AN3155 Erase Form | Accepted |
 | [0017](adr-0017-frame-consumed-length.md) | Separate Payload Extent from Frame Extent in FrameDetectionResult | Accepted |
 | [0018](adr-0018-stm32-bootloader-command-surface.md) | Scope of the STM32 Bootloader Command Surface | Accepted |
+| [0019](adr-0019-dual-serial-transport-backends.md) | Ship Serial Transports for Both System.IO.Ports and RJCP.SerialPortStream | Accepted |
 
 ADR-0001 and ADR-0005 hold, but each names a type or a target framework that has since changed; both
 carry a note saying which.
+
+ADR-0019 is accepted but not yet implemented. It describes packages and types that do not exist, and
+says so at the top.
 
 ## Superseded and withdrawn
 
@@ -47,6 +51,10 @@ removing it from `IByteSource`. ADR-0015 settled the direction by deleting `IByt
 favour of `System.IO.Pipelines.IDuplexPipe`, which is lifecycle-free by construction and already
 understood across the ecosystem. That change also disposed of the builder API (ADR-0004) and made the
 composition proposals in ADR-0010, ADR-0012, and ADR-0013 unnecessary rather than pending.
+
+ADR-0019 is the first record to build on that seam rather than rearrange it. Because a transport is now
+a constructor and two properties, a second serial backend is a package rather than an API change, and
+ADR-0003's objection to shipping two serial types no longer holds.
 
 ## Two notes on numbering
 
