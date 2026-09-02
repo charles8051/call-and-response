@@ -87,6 +87,14 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             //var result = await _transceiver.SendReceiveHeaderFooter(new byte[] { (byte)Stm32BootloaderCommand.GetId, 0xFD }, new byte[] { Ack }, new byte[] { Ack }, token);
             var result = await _transceiver.SendReceiveExactly(new byte[] { (byte)Stm32BootloaderCommand.GetId, 0xFD }, 5, token);
 
+            // SendReceiveExactly only guarantees the byte count, so check the framing before trusting
+            // the payload. A stream left out of sync by an earlier command can deliver five bytes whose
+            // [2..3] would otherwise parse as a plausible id.
+            if (result.Span[0] != Ack || result.Span[1] != 0x01 || result.Span[4] != Ack)
+            {
+                throw new InvalidOperationException($"Malformed Get ID response {BitConverter.ToString(result.ToArray())}");
+            }
+
             return (ushort)((result.Span[2] << 8) | result.Span[3]);
         }
 

@@ -186,6 +186,44 @@ public class Stm32BootloaderClientTests
         result.Should().Be(0x0410);
     }
 
+    [Fact]
+    public async Task GetId_WhenLeadingAckIsWrong_ThrowsInvalidOperationException()
+    {
+        var pipe = new FakeDuplexPipe();
+        // A window shifted by stale bytes: [2..3] would otherwise parse as 0x1234
+        pipe.EnqueueRx(0x00, 0x01, 0x12, 0x34, Ack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.GetId(Token());
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task GetId_WhenNFieldIsWrong_ThrowsInvalidOperationException()
+    {
+        var pipe = new FakeDuplexPipe();
+        // AN3155 fixes N at 0x01 for Get ID
+        pipe.EnqueueRx(Ack, 0x02, 0x12, 0x34, Ack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.GetId(Token());
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task GetId_WhenTrailingAckIsWrong_ThrowsInvalidOperationException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack, 0x01, 0x04, 0x13, 0x00);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.GetId(Token());
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
     // =========================================================================
     // GetSupportedCommands — response parsing
     // =========================================================================
