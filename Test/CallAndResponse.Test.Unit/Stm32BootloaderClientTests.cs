@@ -637,7 +637,7 @@ public class Stm32BootloaderClientTests
     }
 
     [Fact]
-    public async Task GetProtocolVersion_WhenNackReceived_ThrowsInvalidOperationException()
+    public async Task GetProtocolVersion_WhenNackReceived_ThrowsStm32BootloaderException()
     {
         var pipe = new FakeDuplexPipe();
         pipe.EnqueueRx(Nack, 0x00, 0x00, 0x00, 0x00);
@@ -645,11 +645,11 @@ public class Stm32BootloaderClientTests
         var client = new Stm32BootloaderClient(pipe.AsTransceiver());
         var act = async () => await client.GetProtocolVersion(Token());
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
     }
 
     [Fact]
-    public async Task GetProtocolVersion_WhenTrailingAckMissing_ThrowsInvalidOperationException()
+    public async Task GetProtocolVersion_WhenTrailingAckMissing_ThrowsStm32BootloaderException()
     {
         var pipe = new FakeDuplexPipe();
         pipe.EnqueueRx(Ack, 0x31, 0x00, 0x00, Nack);
@@ -657,7 +657,7 @@ public class Stm32BootloaderClientTests
         var client = new Stm32BootloaderClient(pipe.AsTransceiver());
         var act = async () => await client.GetProtocolVersion(Token());
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
     }
 
     // =========================================================================
@@ -697,7 +697,7 @@ public class Stm32BootloaderClientTests
     }
 
     [Fact]
-    public async Task EraseMemory_WhenDeviceNacksCommandFrame_ThrowsInvalidOperationException()
+    public async Task EraseMemory_WhenDeviceNacksCommandFrame_ThrowsStm32BootloaderException()
     {
         var pipe = new FakeDuplexPipe();
         pipe.EnqueueRx(Nack);
@@ -705,11 +705,11 @@ public class Stm32BootloaderClientTests
         var client = new Stm32BootloaderClient(pipe.AsTransceiver());
         var act = async () => await client.EraseMemory(new byte[] { 0x00 }, Token());
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
     }
 
     [Fact]
-    public async Task EraseMemory_WhenDeviceNacksPageFrame_ThrowsInvalidOperationException()
+    public async Task EraseMemory_WhenDeviceNacksPageFrame_ThrowsStm32BootloaderException()
     {
         var pipe = new FakeDuplexPipe();
         pipe.EnqueueRx(Ack);
@@ -718,7 +718,7 @@ public class Stm32BootloaderClientTests
         var client = new Stm32BootloaderClient(pipe.AsTransceiver());
         var act = async () => await client.EraseMemory(new byte[] { 0x00 }, Token());
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
     }
 
     [Fact]
@@ -775,7 +775,7 @@ public class Stm32BootloaderClientTests
     }
 
     [Fact]
-    public async Task EraseAllMemory_WhenDeviceNacksGlobalEraseFrame_ThrowsInvalidOperationException()
+    public async Task EraseAllMemory_WhenDeviceNacksGlobalEraseFrame_ThrowsStm32BootloaderException()
     {
         var pipe = new FakeDuplexPipe();
         pipe.EnqueueRx(Ack);
@@ -784,7 +784,7 @@ public class Stm32BootloaderClientTests
         var client = new Stm32BootloaderClient(pipe.AsTransceiver());
         var act = async () => await client.EraseAllMemory(Token());
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
     }
 
     // =========================================================================
@@ -814,11 +814,11 @@ public class Stm32BootloaderClientTests
         var client = new Stm32BootloaderClient(pipe.AsTransceiver());
         var act = async () => await client.ReadoutUnprotect(Token());
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
     }
 
     [Fact]
-    public async Task ReadoutUnprotect_WhenCommandFrameNacked_ThrowsInvalidOperationException()
+    public async Task ReadoutUnprotect_WhenCommandFrameNacked_ThrowsStm32BootloaderException()
     {
         var pipe = new FakeDuplexPipe();
         pipe.EnqueueRx(Nack);
@@ -826,7 +826,7 @@ public class Stm32BootloaderClientTests
         var client = new Stm32BootloaderClient(pipe.AsTransceiver());
         var act = async () => await client.ReadoutUnprotect(Token());
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
     }
 
     // =========================================================================
@@ -895,7 +895,7 @@ public class Stm32BootloaderClientTests
     }
 
     [Fact]
-    public async Task GetChecksum_WhenResultChecksumIsWrong_ThrowsInvalidOperationException()
+    public async Task GetChecksum_WhenResultChecksumIsWrong_ThrowsStm32BootloaderException()
     {
         var pipe = new FakeDuplexPipe();
         for (int i = 0; i < 5; i++) pipe.EnqueueRx(Ack);
@@ -904,11 +904,11 @@ public class Stm32BootloaderClientTests
         var client = new Stm32BootloaderClient(pipe.AsTransceiver());
         var act = async () => await client.GetChecksum(Stm32BootloaderClient.Stm32BaseAddress, 4, token: Token());
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
     }
 
     [Fact]
-    public async Task GetChecksum_WhenAddressFrameNacked_ThrowsInvalidOperationException()
+    public async Task GetChecksum_WhenAddressFrameNacked_ThrowsStm32BootloaderException()
     {
         var pipe = new FakeDuplexPipe();
         pipe.EnqueueRx(Ack);
@@ -917,7 +917,7 @@ public class Stm32BootloaderClientTests
         var client = new Stm32BootloaderClient(pipe.AsTransceiver());
         var act = async () => await client.GetChecksum(Stm32BootloaderClient.Stm32BaseAddress, 4, token: Token());
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
     }
 
     [Fact]

@@ -102,7 +102,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         /// </remarks>
         /// <param name="token">Cancellation token.</param>
         /// <returns>The bootloader protocol version and option bytes.</returns>
-        /// <exception cref="InvalidOperationException">The device answered NACK or an unexpected byte.</exception>
+        /// <exception cref="Stm32BootloaderException">The device answered NACK or an unexpected byte.</exception>
         public async Task<Stm32VersionInfo> GetProtocolVersion(CancellationToken token = default)
         {
             var result = await _transceiver.SendReceiveExactly(new byte[] { (byte)Stm32BootloaderCommand.GetVersion, 0xFE }, 5, token);
@@ -267,7 +267,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         /// </param>
         /// <exception cref="ArgumentNullException"><paramref name="pageNumbers"/> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="pageNumbers"/> is empty or holds more than 255 pages.</exception>
-        /// <exception cref="InvalidOperationException">The device answered NACK or an unexpected byte.</exception>
+        /// <exception cref="Stm32BootloaderException">The device answered NACK or an unexpected byte.</exception>
         public async Task EraseMemory(IEnumerable<byte> pageNumbers, CancellationToken token = default)
         {
             if (pageNumbers == null) throw new ArgumentNullException(nameof(pageNumbers));
@@ -318,7 +318,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         /// happened. Treat the whole flash as possibly erased and re-establish bootloader state
         /// before writing or retrying.
         /// </param>
-        /// <exception cref="InvalidOperationException">The device answered NACK or an unexpected byte.</exception>
+        /// <exception cref="Stm32BootloaderException">The device answered NACK or an unexpected byte.</exception>
         public async Task EraseAllMemory(CancellationToken token = default)
         {
             await SendAndExpectAck(new byte[] { (byte)Stm32BootloaderCommand.EraseMemory, 0xBC }, nameof(EraseAllMemory), token);
@@ -478,7 +478,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         /// not that nothing happened. Treat the whole flash as possibly erased and re-enter the
         /// bootloader — the part has probably reset — before issuing anything else.
         /// </param>
-        /// <exception cref="InvalidOperationException">The device answered NACK or an unexpected byte.</exception>
+        /// <exception cref="Stm32BootloaderException">The device answered NACK or an unexpected byte.</exception>
         public async Task ReadoutUnprotect(CancellationToken token = default)
         {
             await SendAndExpectAck(new byte[] { (byte)Stm32BootloaderCommand.ReadoutUnprotect, 0x6D }, nameof(ReadoutUnprotect), token);
@@ -531,7 +531,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         /// <param name="token">Cancellation token.</param>
         /// <returns>The CRC the device computed over the requested region.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="numWords"/> is zero.</exception>
-        /// <exception cref="InvalidOperationException">The device answered NACK, an unexpected byte, or a CRC whose checksum did not match.</exception>
+        /// <exception cref="Stm32BootloaderException">The device answered NACK, an unexpected byte, or a CRC whose checksum did not match.</exception>
         public async Task<uint> GetChecksum(uint address, uint numWords, uint crcPolynomial = DefaultCrcPolynomial, uint crcInitialValue = DefaultCrcInitialValue, CancellationToken token = default)
         {
             if (numWords == 0)
@@ -554,7 +554,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             var expectedChecksum = (byte)(crc[0] ^ crc[1] ^ crc[2] ^ crc[3]);
             if (receivedChecksum != expectedChecksum)
             {
-                throw new InvalidOperationException($"GetChecksum: the device returned a CRC whose checksum did not match. Expected 0x{expectedChecksum:X2}, got 0x{receivedChecksum:X2}");
+                throw new Stm32BootloaderException($"GetChecksum: the device returned a CRC whose checksum did not match. Expected 0x{expectedChecksum:X2}, got 0x{receivedChecksum:X2}");
             }
 
             return ((uint)crc[0] << 24) | ((uint)crc[1] << 16) | ((uint)crc[2] << 8) | crc[3];
@@ -584,7 +584,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         {
             if (response.Length == 0)
             {
-                throw new InvalidOperationException($"{commandName}: the device sent no status byte");
+                throw new Stm32BootloaderException($"{commandName}: the device sent no status byte");
             }
             if (response[0] == Ack)
             {
@@ -592,9 +592,9 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             }
             if (response[0] == Nack)
             {
-                throw new InvalidOperationException($"{commandName}: the device answered NACK (0x{Nack:X2})");
+                throw new Stm32BootloaderException($"{commandName}: the device answered NACK (0x{Nack:X2})");
             }
-            throw new InvalidOperationException($"{commandName}: expected ACK (0x{Ack:X2}) or NACK (0x{Nack:X2}), got 0x{response[0]:X2}");
+            throw new Stm32BootloaderException($"{commandName}: expected ACK (0x{Ack:X2}) or NACK (0x{Nack:X2}), got 0x{response[0]:X2}");
         }
 
         /// <summary>

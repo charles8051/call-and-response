@@ -298,8 +298,10 @@ Exception
 │                                      Modbus-specific context
 │
 └── Stm32BootloaderException           STM32 bootloader protocol violation
-                                       (e.g. a sync-byte reply that is neither
-                                       ACK nor NACK)
+                                       (a sync-byte reply that is neither ACK
+                                       nor NACK, a NACK or unexpected byte
+                                       where a command expects an ACK, a
+                                       malformed reply)
 ```
 
 ---

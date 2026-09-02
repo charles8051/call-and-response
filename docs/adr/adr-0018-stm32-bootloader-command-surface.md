@@ -87,6 +87,13 @@ superseded_by: ""
   binary compatibility is worth preserving when it is free, and is not a constraint that outranks
   API quality when it is not.
 
+- **CTX-012**: `Stm32BootloaderException` was added to this package (issue #9, PR #14) as the
+  protocol-error type for "the device answered in a way the protocol does not allow". `Ping` throws it
+  for a sync-byte reply that is neither ACK nor NACK, and `GetId` (issue #6, PR #13) throws it for a
+  malformed reply. New commands in the same file reporting the same class of failure through
+  `InvalidOperationException` would mean one file describing one kind of failure two different ways,
+  and would deny callers a single type to catch.
+
 ## Decision
 
 Implement the four commands whose failure modes are recoverable, and make the three option-byte
@@ -127,12 +134,14 @@ commands non-callable rather than shipping them unverified.
   deliberate.
 
 - **DEC-006**: Newly implemented commands validate the device's status byte. A NACK, or any byte that
-  is neither ACK nor NACK, raises `InvalidOperationException` naming the command. They read the
-  status byte with `ReceiveExactly(1)` rather than scanning for an ACK with `ReceiveUntilPerfectMatch`,
-  so a NACK fails immediately instead of blocking until the caller's token cancels.
+  is neither ACK nor NACK, raises `Stm32BootloaderException` naming the command — the package's
+  protocol-error type, already used by `Ping` and `GetId`, per CTX-012. They read the status byte with `ReceiveExactly(1)` rather than scanning for an
+  ACK with `ReceiveUntilPerfectMatch`, so a NACK fails immediately instead of blocking until the
+  caller's token cancels. Argument validation is unaffected and keeps its `ArgumentException` family:
+  a caller passing 300 page numbers has not been lied to by a device.
 
 - **DEC-007**: The `GetChecksum` result frame's trailing byte is validated as the XOR of the four CRC
-  bytes, per CTX-008, and a mismatch raises `InvalidOperationException`. A verify command that can
+  bytes, per CTX-008, and a mismatch raises `Stm32BootloaderException`. A verify command that can
   silently return a corrupted value is worse than no verify command.
 
 - **DEC-008**: The three deferred commands are implemented only once they can be exercised against
@@ -178,9 +187,10 @@ commands non-callable rather than shipping them unverified.
 
 - **POS-003**: Bootloaders below protocol 3.0 have an erase path, which they previously did not.
 
-- **POS-004**: The new commands fail fast and specifically. `InvalidOperationException` naming the
+- **POS-004**: The new commands fail fast and specifically. `Stm32BootloaderException` naming the
   command and the offending byte replaces both `NotImplementedException` and, for NACK, an
-  indefinite wait.
+  indefinite wait. Because it is the same type `Ping` and `GetId` already throw, a caller can catch
+  one exception type for every "the device answered wrongly" failure in the package.
 
 - **POS-005**: The most dangerous three commands cannot be invoked by a caller who assumed they
   worked because they compiled.
