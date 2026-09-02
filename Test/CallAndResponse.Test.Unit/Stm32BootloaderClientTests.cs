@@ -321,4 +321,156 @@ public class Stm32BootloaderClientTests
         result.ToArray().Take(256).Should().AllBeEquivalentTo((byte)0xAA);
         result.ToArray().Skip(256).Should().AllBeEquivalentTo((byte)0xBB);
     }
+
+    // =========================================================================
+    // Extended erase — AN3155 3.7 wire format
+    //
+    // Every variant is two SendReceivePerfectMatch exchanges, each answered with
+    // a single Ack: the command frame [0x44, 0xBB], then the erase payload.
+    // The payload checksum is the XOR of every payload byte.
+    // =========================================================================
+
+    [Fact]
+    public async Task ExtendedEraseMass_SendsSpecialCodeWithNoPageList()
+    {
+        var pipe = new FakeDuplexPipe();
+        EnqueueAck(pipe); // response to command frame
+        EnqueueAck(pipe); // response to erase payload
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        await client.ExtendedEraseMass(Token());
+
+        // cmd_frame(2) + half-word 0xFFFF + checksum (0xFF ^ 0xFF = 0x00)
+        pipe.SentBytes.Should().Equal(
+            (byte)Stm32BootloaderCommand.ExtendedEraseMemory, 0xBB,
+            0xFF, 0xFF, 0x00);
+    }
+
+    [Fact]
+    public async Task ExtendedEraseBank_Bank1_SendsSpecialCodeWithNoPageList()
+    {
+        var pipe = new FakeDuplexPipe();
+        EnqueueAck(pipe);
+        EnqueueAck(pipe);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        await client.ExtendedEraseBank(1, Token());
+
+        // half-word 0xFFFE + checksum (0xFF ^ 0xFE = 0x01)
+        pipe.SentBytes.Should().Equal(
+            (byte)Stm32BootloaderCommand.ExtendedEraseMemory, 0xBB,
+            0xFF, 0xFE, 0x01);
+    }
+
+    [Fact]
+    public async Task ExtendedEraseBank_Bank2_SendsSpecialCodeWithNoPageList()
+    {
+        var pipe = new FakeDuplexPipe();
+        EnqueueAck(pipe);
+        EnqueueAck(pipe);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        await client.ExtendedEraseBank(2, Token());
+
+        // half-word 0xFFFD + checksum (0xFF ^ 0xFD = 0x02)
+        pipe.SentBytes.Should().Equal(
+            (byte)Stm32BootloaderCommand.ExtendedEraseMemory, 0xBB,
+            0xFF, 0xFD, 0x02);
+    }
+
+    [Fact]
+    public async Task ExtendedEraseBank_InvalidBank_ThrowsArgumentOutOfRangeException()
+    {
+        var pipe = new FakeDuplexPipe();
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.ExtendedEraseBank(3, Token());
+
+        await act.Should().ThrowAsync<ArgumentOutOfRangeException>();
+        pipe.SentBytes.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ExtendedErasePages_WindowAbovePageZero_SendsCountMinusOneThenPages()
+    {
+        var pipe = new FakeDuplexPipe();
+        EnqueueAck(pipe);
+        EnqueueAck(pipe);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        await client.ExtendedErasePages(new ushort[] { 0x0010, 0x0011, 0x0012 }, Token());
+
+        // N = 3 - 1 = 2, then the three page half-words, big-endian.
+        // checksum = 0x00^0x02 ^ 0x00^0x10 ^ 0x00^0x11 ^ 0x00^0x12 = 0x11
+        pipe.SentBytes.Should().Equal(
+            (byte)Stm32BootloaderCommand.ExtendedEraseMemory, 0xBB,
+            0x00, 0x02,
+            0x00, 0x10,
+            0x00, 0x11,
+            0x00, 0x12,
+            0x11);
+    }
+
+    [Fact]
+    public async Task ExtendedErasePages_SinglePage_SendsZeroHalfWordThenThatPage()
+    {
+        var pipe = new FakeDuplexPipe();
+        EnqueueAck(pipe);
+        EnqueueAck(pipe);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        await client.ExtendedErasePages(new ushort[] { 0x0102 }, Token());
+
+        // N = 0, one page half-word 0x0102, checksum = 0x01 ^ 0x02 = 0x03
+        pipe.SentBytes.Should().Equal(
+            (byte)Stm32BootloaderCommand.ExtendedEraseMemory, 0xBB,
+            0x00, 0x00,
+            0x01, 0x02,
+            0x03);
+    }
+
+    [Fact]
+    public async Task ExtendedErasePages_EmptyList_ThrowsArgumentException()
+    {
+        var pipe = new FakeDuplexPipe();
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.ExtendedErasePages(Array.Empty<ushort>(), Token());
+
+        await act.Should().ThrowAsync<ArgumentException>();
+        pipe.SentBytes.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ExtendedErasePages_NullList_ThrowsArgumentNullException()
+    {
+        var pipe = new FakeDuplexPipe();
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.ExtendedErasePages(null!, Token());
+
+        await act.Should().ThrowAsync<ArgumentNullException>();
+        pipe.SentBytes.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ExtendedEraseMemoryPages_ObsoleteShim_StillErasesPagesZeroThroughN()
+    {
+        var pipe = new FakeDuplexPipe();
+        EnqueueAck(pipe);
+        EnqueueAck(pipe);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+#pragma warning disable CS0618 // covering the deprecated shim's wire format deliberately
+        await client.ExtendedEraseMemoryPages(1, Token());
+#pragma warning restore CS0618
+
+        // N = 1 followed by pages 0 and 1, checksum = 0x01 ^ 0x01 = 0x00
+        pipe.SentBytes.Should().Equal(
+            (byte)Stm32BootloaderCommand.ExtendedEraseMemory, 0xBB,
+            0x00, 0x01,
+            0x00, 0x00,
+            0x00, 0x01,
+            0x00);
+    }
 }

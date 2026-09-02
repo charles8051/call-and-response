@@ -16,6 +16,15 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         private const byte Nack = 0x1F;
         public const uint Stm32BaseAddress = 0x08000000;
 
+        // AN3155 3.7 special erase codes, sent as the first (and only) half-word of the erase payload
+        private const ushort MassEraseCode = 0xFFFF;
+        private const ushort Bank1EraseCode = 0xFFFE;
+        private const ushort Bank2EraseCode = 0xFFFD;
+
+        // Half-words 0xFFFD..0xFFFF are the special codes above, so the largest page-list half-word
+        // N is 0xFFFC, which describes N + 1 = 0xFFFD pages.
+        private const int MaxErasePageCount = 0xFFFD;
+
         // TODO: provide MCU model specific support
 
         // TODO: Add Transceiver configuration options. The transceiver we use here must be capable of 8 Data Bits, Even Parity, 1 Stop Bit.
@@ -178,17 +187,72 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         }
 
         // Only available for USART Booloader 3.0+
-        public async Task ExtendedEraseMemoryPages(ushort numPages, CancellationToken token = default)
+        [Obsolete("Sends AN3155 half-word N, so it erases pages 0 through numPages inclusive - one more page than the name suggests - and it cannot start above page 0. Use ExtendedErasePages, ExtendedEraseMass, or ExtendedEraseBank instead.")]
+        public Task ExtendedEraseMemoryPages(ushort numPages, CancellationToken token = default)
         {
-            await _transceiver.SendReceivePerfectMatch(new byte[] { (byte)Stm32BootloaderCommand.ExtendedEraseMemory, 0xBB }, new byte[] { Ack }, token);
+            var pages = new ushort[numPages + 1];
+            for (int i = 0; i < pages.Length; i++)
+            {
+                pages[i] = (ushort)i;
+            }
+            return ExtendedErasePages(pages, token);
+        }
+
+        // Only available for USART Booloader 3.0+
+        // AN3155 3.7: special code 0xFFFF, sent as a bare half-word plus checksum with no page list.
+        public Task ExtendedEraseMass(CancellationToken token = default)
+        {
+            return ExtendedEraseSpecial(MassEraseCode, token);
+        }
+
+        // Only available for USART Booloader 3.0+
+        // AN3155 3.7: special codes 0xFFFE (bank 1) and 0xFFFD (bank 2), sent as a bare half-word
+        // plus checksum with no page list.
+        public Task ExtendedEraseBank(int bank, CancellationToken token = default)
+        {
+            if (bank != 1 && bank != 2)
+            {
+                throw new ArgumentOutOfRangeException(nameof(bank), bank, "Bank must be 1 or 2");
+            }
+            return ExtendedEraseSpecial(bank == 1 ? Bank1EraseCode : Bank2EraseCode, token);
+        }
+
+        // Only available for USART Booloader 3.0+
+        // AN3155 3.7: half-word N = pages.Count - 1, followed by the page numbers, then the checksum.
+        public Task ExtendedErasePages(IReadOnlyList<ushort> pages, CancellationToken token = default)
+        {
+            if (pages is null)
+            {
+                throw new ArgumentNullException(nameof(pages));
+            }
+            if (pages.Count == 0)
+            {
+                throw new ArgumentException("At least one page must be specified", nameof(pages));
+            }
+            if (pages.Count > MaxErasePageCount)
+            {
+                throw new ArgumentException($"At most {MaxErasePageCount} pages can be erased in one command; half-words above 0xFFFC are reserved for mass and bank erase", nameof(pages));
+            }
 
             var shorts = new List<ushort>();
-            shorts.Add(numPages);
+            shorts.Add((ushort)(pages.Count - 1));
 
-            for(int i = 0; i < numPages + 1; i++)
+            for (int i = 0; i < pages.Count; i++)
             {
-                shorts.Add((ushort)i);
+                shorts.Add(pages[i]);
             }
+
+            return SendExtendedErase(shorts, token);
+        }
+
+        private Task ExtendedEraseSpecial(ushort code, CancellationToken token)
+        {
+            return SendExtendedErase(new List<ushort> { code }, token);
+        }
+
+        private async Task SendExtendedErase(List<ushort> shorts, CancellationToken token)
+        {
+            await _transceiver.SendReceivePerfectMatch(new byte[] { (byte)Stm32BootloaderCommand.ExtendedEraseMemory, 0xBB }, new byte[] { Ack }, token);
 
             var payload = shorts.SelectMany((x) => { var b = BitConverter.GetBytes(x); Array.Reverse(b); return b; });
             var checksum = (byte)~(ComputeChecksum(payload.ToArray()));
