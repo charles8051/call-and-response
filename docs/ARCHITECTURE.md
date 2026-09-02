@@ -269,6 +269,15 @@ are surfaced as `ModbusProtocolException` with a typed `ModbusProtocolExceptionC
 - `ExtendedErasePages` — Extended erase of an explicit page list
   (`ExtendedEraseMemoryPages` is the deprecated pages-`0..N` form of this; see
   [ADR-0016](adr/adr-0016-stm32-extended-erase-api-shape.md))
+- `GetProtocolVersion` — Bootloader version and legacy option bytes (0x01)
+- `EraseMemory` / `EraseAllMemory` — Page and global erase for bootloaders below 3.0 (0x43)
+- `ReadoutUnprotect` — Leave RDP level 1; mass erases the flash (0x92)
+- `GetChecksum` — Device-computed CRC over a memory region (0xA1)
+
+`WriteProtect` (0x63), `WriteUnprotect` (0x73), and `ReadoutProtect` (0x82) are
+declared but marked `[Obsolete(…, true)]`, so calling them is a compile error.
+They rewrite option bytes and are not shipped without hardware to verify them
+against. See [ADR-0018](adr/adr-0018-stm32-bootloader-command-surface.md).
 
 ---
 
@@ -289,8 +298,10 @@ Exception
 │                                      Modbus-specific context
 │
 └── Stm32BootloaderException           STM32 bootloader protocol violation
-                                       (e.g. a sync-byte reply that is neither
-                                       ACK nor NACK)
+                                       (a sync-byte reply that is neither ACK
+                                       nor NACK, a NACK or unexpected byte
+                                       where a command expects an ACK, a
+                                       malformed reply)
 ```
 
 ---

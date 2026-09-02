@@ -602,4 +602,332 @@ public class Stm32BootloaderClientTests
             0x00, 0x01
         });
     }
+
+    // =========================================================================
+    // GetProtocolVersion — AN3155 0x01, five-byte response
+    // =========================================================================
+
+    [Fact]
+    public async Task GetProtocolVersion_SendsCorrectCommandFrame()
+    {
+        var pipe = new FakeDuplexPipe();
+        // SendReceiveExactly(cmd, 5, token) → Ack, version, option1, option2, Ack
+        pipe.EnqueueRx(Ack, 0x31, 0x00, 0x00, Ack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        await client.GetProtocolVersion(Token());
+
+        pipe.SentBytes.Should().Equal((byte)Stm32BootloaderCommand.GetVersion, 0xFE);
+    }
+
+    [Fact]
+    public async Task GetProtocolVersion_ParsesVersionAndOptionBytes()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack, 0x31, 0x0A, 0x0B, Ack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var result = await client.GetProtocolVersion(Token());
+
+        result.Version.Should().Be(0x31);
+        result.MajorVersion.Should().Be(3);
+        result.MinorVersion.Should().Be(1);
+        result.OptionByte1.Should().Be(0x0A);
+        result.OptionByte2.Should().Be(0x0B);
+    }
+
+    [Fact]
+    public async Task GetProtocolVersion_WhenNackReceived_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Nack, 0x00, 0x00, 0x00, 0x00);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.GetProtocolVersion(Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    [Fact]
+    public async Task GetProtocolVersion_WhenTrailingAckMissing_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack, 0x31, 0x00, 0x00, Nack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.GetProtocolVersion(Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    // =========================================================================
+    // EraseMemory — AN3155 0x43, page erase and global erase
+    // =========================================================================
+
+    [Fact]
+    public async Task EraseMemory_SendsCommandFrameThenPageFrameWithChecksum()
+    {
+        var pipe = new FakeDuplexPipe();
+        // Two SendReceiveExactly(…, 1) exchanges: command frame, then page frame
+        pipe.EnqueueRx(Ack);
+        pipe.EnqueueRx(Ack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        await client.EraseMemory(new byte[] { 0x02, 0x03, 0x04 }, Token());
+
+        // cmd(2) + [N=2, 0x02, 0x03, 0x04, checksum]
+        // checksum = XOR(0x02, 0x02, 0x03, 0x04) = 0x07
+        pipe.SentBytes.Should().Equal(
+            (byte)Stm32BootloaderCommand.EraseMemory, 0xBC,
+            0x02, 0x02, 0x03, 0x04, 0x07);
+    }
+
+    [Fact]
+    public async Task EraseMemory_SinglePage_SendsZeroAsPageCount()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack);
+        pipe.EnqueueRx(Ack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        await client.EraseMemory(new byte[] { 0x07 }, Token());
+
+        // N = 0 for one page; checksum = XOR(0x00, 0x07) = 0x07
+        pipe.SentBytes.Skip(2).Should().Equal(0x00, 0x07, 0x07);
+    }
+
+    [Fact]
+    public async Task EraseMemory_WhenDeviceNacksCommandFrame_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Nack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.EraseMemory(new byte[] { 0x00 }, Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    [Fact]
+    public async Task EraseMemory_WhenDeviceNacksPageFrame_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack);
+        pipe.EnqueueRx(Nack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.EraseMemory(new byte[] { 0x00 }, Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    [Fact]
+    public async Task EraseMemory_WithNoPages_ThrowsArgumentException()
+    {
+        var pipe = new FakeDuplexPipe();
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+
+        var act = async () => await client.EraseMemory(Array.Empty<byte>(), Token());
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task EraseMemory_WithMoreThan255Pages_ThrowsArgumentException()
+    {
+        var pipe = new FakeDuplexPipe();
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+
+        var act = async () => await client.EraseMemory(new byte[256], Token());
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task EraseMemory_With255Pages_SendsReservedGlobalEraseValueAsPageCount()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack);
+        pipe.EnqueueRx(Ack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var pages = Enumerable.Range(0, 255).Select(i => (byte)i).ToArray();
+        await client.EraseMemory(pages, Token());
+
+        // N = 254 for 255 pages — the largest page erase the single-byte encoding allows
+        pipe.SentBytes.Skip(2).Take(1).Should().Equal((byte)0xFE);
+        pipe.SentBytes.Count.Should().Be(2 + 1 + 255 + 1);
+    }
+
+    [Fact]
+    public async Task EraseAllMemory_SendsCommandFrameThenGlobalEraseFrame()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack);
+        pipe.EnqueueRx(Ack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        await client.EraseAllMemory(Token());
+
+        pipe.SentBytes.Should().Equal(
+            (byte)Stm32BootloaderCommand.EraseMemory, 0xBC,
+            0xFF, 0x00);
+    }
+
+    [Fact]
+    public async Task EraseAllMemory_WhenDeviceNacksGlobalEraseFrame_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack);
+        pipe.EnqueueRx(Nack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.EraseAllMemory(Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    // =========================================================================
+    // ReadoutUnprotect — AN3155 0x92, two ACKs, mass erases the part
+    // =========================================================================
+
+    [Fact]
+    public async Task ReadoutUnprotect_SendsCommandFrameOnly()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack); // acknowledges the command frame
+        pipe.EnqueueRx(Ack); // sent unprompted once the mass erase completes
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        await client.ReadoutUnprotect(Token());
+
+        pipe.SentBytes.Should().Equal((byte)Stm32BootloaderCommand.ReadoutUnprotect, 0x6D);
+    }
+
+    [Fact]
+    public async Task ReadoutUnprotect_WaitsForSecondAck()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack);
+        pipe.EnqueueRx(Nack); // erase failed — read protection is still active
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.ReadoutUnprotect(Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    [Fact]
+    public async Task ReadoutUnprotect_WhenCommandFrameNacked_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Nack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.ReadoutUnprotect(Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    // =========================================================================
+    // GetChecksum — AN3155 0xA1, four parameter frames then the CRC
+    // =========================================================================
+
+    /// <summary>
+    /// Enqueues the five ACKs GetChecksum consumes before the result frame, then
+    /// ACK + CRC (MSB first) + XOR checksum.
+    /// </summary>
+    private static void EnqueueChecksumResponse(FakeDuplexPipe pipe, uint crc)
+    {
+        for (int i = 0; i < 5; i++) pipe.EnqueueRx(Ack);
+
+        byte b0 = (byte)(crc >> 24), b1 = (byte)(crc >> 16), b2 = (byte)(crc >> 8), b3 = (byte)crc;
+        pipe.EnqueueRx(Ack, b0, b1, b2, b3, (byte)(b0 ^ b1 ^ b2 ^ b3));
+    }
+
+    [Fact]
+    public async Task GetChecksum_SendsAllFiveFramesWithChecksums()
+    {
+        var pipe = new FakeDuplexPipe();
+        EnqueueChecksumResponse(pipe, 0x12345678);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        await client.GetChecksum(Stm32BootloaderClient.Stm32BaseAddress, 0x40, 0x04C11DB7, 0xFFFFFFFF, Token());
+
+        pipe.SentBytes.Should().Equal(
+            // command frame
+            (byte)Stm32BootloaderCommand.GetChecksum, 0x5E,
+            // start address 0x08000000, checksum 0x08
+            0x08, 0x00, 0x00, 0x00, 0x08,
+            // size 0x00000040 words, checksum 0x40
+            0x00, 0x00, 0x00, 0x40, 0x40,
+            // polynomial 0x04C11DB7, checksum = 0x04^0xC1^0x1D^0xB7 = 0x6F
+            0x04, 0xC1, 0x1D, 0xB7, 0x6F,
+            // initial value 0xFFFFFFFF, checksum 0x00
+            0xFF, 0xFF, 0xFF, 0xFF, 0x00);
+    }
+
+    [Fact]
+    public async Task GetChecksum_UsesStm32CrcUnitResetValuesByDefault()
+    {
+        var pipe = new FakeDuplexPipe();
+        EnqueueChecksumResponse(pipe, 0);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        await client.GetChecksum(Stm32BootloaderClient.Stm32BaseAddress, 0x40, token: Token());
+
+        // The polynomial and initial-value frames follow the address and size frames.
+        pipe.SentBytes.Skip(12).Should().Equal(
+            0x04, 0xC1, 0x1D, 0xB7, 0x6F,
+            0xFF, 0xFF, 0xFF, 0xFF, 0x00);
+    }
+
+    [Fact]
+    public async Task GetChecksum_ParsesCrcMsbFirst()
+    {
+        var pipe = new FakeDuplexPipe();
+        EnqueueChecksumResponse(pipe, 0xDEADBEEF);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var result = await client.GetChecksum(Stm32BootloaderClient.Stm32BaseAddress, 4, token: Token());
+
+        result.Should().Be(0xDEADBEEF);
+    }
+
+    [Fact]
+    public async Task GetChecksum_WhenResultChecksumIsWrong_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        for (int i = 0; i < 5; i++) pipe.EnqueueRx(Ack);
+        pipe.EnqueueRx(Ack, 0xDE, 0xAD, 0xBE, 0xEF, 0x00); // 0x00 is not the XOR
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.GetChecksum(Stm32BootloaderClient.Stm32BaseAddress, 4, token: Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    [Fact]
+    public async Task GetChecksum_WhenAddressFrameNacked_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack);
+        pipe.EnqueueRx(Nack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.GetChecksum(Stm32BootloaderClient.Stm32BaseAddress, 4, token: Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    [Fact]
+    public async Task GetChecksum_WithZeroWords_ThrowsArgumentOutOfRangeException()
+    {
+        var pipe = new FakeDuplexPipe();
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+
+        var act = async () => await client.GetChecksum(Stm32BootloaderClient.Stm32BaseAddress, 0, token: Token());
+
+        await act.Should().ThrowAsync<ArgumentOutOfRangeException>();
+    }
 }
