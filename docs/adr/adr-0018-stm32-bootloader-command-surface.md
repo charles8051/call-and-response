@@ -79,6 +79,14 @@ superseded_by: ""
   that never executes. That is a worse and less legible failure than the `NotImplementedException`
   the old method would have thrown.
 
+- **CTX-011**: The repository's practice on public API breaks is to make them and record them, not to
+  avoid them. CONTRIBUTING asks only that a breaking public API change be noted explicitly in the
+  pull request description. ADR-0009 carries three of them — NEG-001, NEG-002 and NEG-003 are each a
+  "breaking removal" of a shipped member. The package is on an unreleased `2.0.0` line (MinVer
+  derives `2.0.0-alpha.*` from the current tag), which is where a major-version break belongs. So
+  binary compatibility is worth preserving when it is free, and is not a constraint that outranks
+  API quality when it is not.
+
 ## Decision
 
 Implement the four commands whose failure modes are recoverable, and make the three option-byte
@@ -137,6 +145,20 @@ commands non-callable rather than shipping them unverified.
   for already-compiled binaries. It is the same treatment DEC-005 gives the protection commands, for
   the same reason: an error-level `[Obsolete]` communicates more than an absence.
 
+- **DEC-011**: `GetChecksum(CancellationToken)` is likewise kept as an `[Obsolete(…, true)]`
+  declaration alongside the new parameterised overload, on the same reasoning as DEC-009. The two
+  coexist without ambiguity: the new overload requires an address and a size, so a zero- or
+  one-argument call can only bind to the obsolete one and produces the intended CS0619.
+
+- **DEC-012**: `GetProtocolVersion` does **not** get the same treatment, and its return type change
+  from `Task` to `Task<Stm32VersionInfo>` is accepted as a binary break. Return type is not part of a
+  C# method signature, so the old and new forms cannot coexist; preserving the entry point would mean
+  permanently surrendering the name `GetProtocolVersion` to a stub that only ever threw and shipping
+  the working command under a second name. DEC-009 and DEC-011 are taken where retention costs
+  nothing; this one costs the correct name of a public API forever, which is more than a
+  `NotImplementedException` is worth protecting. Recorded here rather than absorbed silently, per
+  CTX-011.
+
 - **DEC-010**: Destructive commands document that cancellation does not roll back the operation.
   Once `EraseMemory`'s page frame, `EraseAllMemory`'s `0xFF 0x00`, or `ReadoutUnprotect`'s command
   frame has been accepted, the device proceeds whatever the host does, so an
@@ -172,9 +194,16 @@ commands non-callable rather than shipping them unverified.
   to lift. Per DEC-009 the declaration is retained, so binary compatibility is preserved; the cost is
   a dead method kept alive in the type.
 
-- **NEG-002**: `GetProtocolVersion` returns `Task<Stm32VersionInfo>` rather than `Task`, and
-  `GetChecksum` returns `Task<uint>` and takes four new parameters. Both are breaking signature
-  changes to methods that previously only threw.
+- **NEG-002**: `GetProtocolVersion` returns `Task<Stm32VersionInfo>` rather than `Task`. This is the
+  one **binary**-breaking change in this record (DEC-012): an already-compiled caller resolves the
+  old return type and gets a `MissingMethodException` where it would previously have got a
+  `NotImplementedException`. Both are failures, but the new one is less legible.
+
+- **NEG-006**: `GetChecksum` gains four parameters, so the old no-argument call no longer compiles.
+  The zero-parameter declaration is retained per DEC-011, so this is a source break only. The cost is
+  a second dead `GetChecksum` member kept alive in the type, on top of the dead `EraseMemory` from
+  DEC-009 — four permanently non-callable members in all, which is the price of the compile-error
+  treatment.
 
 - **NEG-003**: Calling `WriteProtect`, `WriteUnprotect`, or `ReadoutProtect` is now a compile error
   (CS0619). Any code that referenced them — necessarily code that could only have thrown — stops

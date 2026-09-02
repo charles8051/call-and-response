@@ -486,6 +486,23 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         }
 
         /// <summary>
+        /// Get Checksum with no arguments. Never implemented — see the remarks.
+        /// </summary>
+        /// <remarks>
+        /// Command 0xA1 needs a start address, a region size, a CRC polynomial and a CRC seed;
+        /// there is nothing sensible for a no-argument form to send. The signature is kept, and
+        /// made non-callable, only so that binaries compiled against an earlier package still
+        /// resolve the method rather than failing to JIT their caller with a
+        /// <see cref="MissingMethodException"/>. Use
+        /// <see cref="GetChecksum(uint, uint, uint, uint, CancellationToken)"/> instead.
+        /// </remarks>
+        [Obsolete("GetChecksum() was never implemented; command 0xA1 needs an address, a size, a CRC polynomial and a CRC seed. Use GetChecksum(address, numWords, ...).", true)]
+        public Task GetChecksum(CancellationToken token = default)
+        {
+            throw new NotImplementedException();
+        }
+
+        /// <summary>
         /// Get Checksum (AN3155 command 0xA1). Asks the device to compute a CRC over a region of
         /// its own memory, which verifies a written image without reading it back over the wire.
         /// </summary>
