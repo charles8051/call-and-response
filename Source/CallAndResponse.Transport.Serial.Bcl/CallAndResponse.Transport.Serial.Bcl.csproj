@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="RJCP.SerialPortStream" Version="3.0.5" />
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
     <PackageReference Include="System.IO.Pipelines" Version="8.0.0" />
   </ItemGroup>
 
@@ -22,8 +22,8 @@
 
   <PropertyGroup>
     <Authors>Charles Lee</Authors>
-    <Description>Serial port IDuplexPipe transport for CallAndResponse, backed by RJCP.SerialPortStream</Description>
-    <PackageTags>serial transport duplex-pipe rjcp</PackageTags>
+    <Description>Serial port IDuplexPipe transport for CallAndResponse, backed by System.IO.Ports</Description>
+    <PackageTags>serial transport duplex-pipe system-io-ports</PackageTags>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>

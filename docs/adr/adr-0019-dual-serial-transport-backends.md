@@ -5,7 +5,7 @@ date: "2026-09-02"
 authors: "Repository maintainer"
 tags: ["architecture", "decision", "serial", "transport", "packaging"]
 supersedes: ""
-superseded_by: ""
+superseded_by: "ADR-0020 (DEC-001 and DEC-002 only)"
 ---
 
 # ADR-0019: Ship Serial Transports for Both System.IO.Ports and RJCP.SerialPortStream
@@ -14,10 +14,20 @@ superseded_by: ""
 
 **Accepted**
 
-*Implementation status: not implemented. No `.Bcl` or `.Rjcp` package exists yet; the serial transport
-is still the single `CallAndResponse.Transport.Serial` package described in
-[ADR-0015](adr-0015-duplex-pipe-transport-seam.md). This record fixes the design before the code is
-written.*
+> **DEC-001 and DEC-002 are superseded by [ADR-0020](adr-0020-serial-package-naming-without-a-type-forward.md).**
+> They contradict each other. `TypeForwardedTo` forwards a type *identity* and cannot rename, so
+> DEC-002's shim cannot preserve `SerialDuplexPipe` while DEC-001 renames the target to
+> `RjcpSerialDuplexPipe`. What shipped instead: `CallAndResponse.Transport.Serial` keeps its name and
+> its type, and only the new backend takes a suffix. ADR-0020 has the reasoning.
+>
+> **The rest of this record stands and is implemented.** Everything about why the two read pumps
+> differ — CTX-004 through CTX-009, DEC-003 through DEC-009b, and the alternatives — describes the
+> code as it ships.
+
+*Implementation status: implemented, except as amended above. `CallAndResponse.Transport.Serial.Bcl`
+ships `BclSerialDuplexPipe`, and the shared pump of DEC-009 lives in `Source/Shared/SerialReadPump.cs`,
+linked into both transport projects. The Tier 4 loopback coverage of IMP-005a and the measurement of
+IMP-001 are still outstanding.*
 
 ## Context
 

@@ -59,65 +59,37 @@ public sealed class SerialDuplexPipe : IDuplexPipe, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(stream);
         Output = PipeWriter.Create(stream);
 
+        var token = _cts.Token;
+
         _pumpTask = Task.Factory.StartNew(
-            () => RunPumpAsync(stream, _rxPipe.Writer, _cts.Token).GetAwaiter().GetResult(),
+            () => SerialReadPump.RunAsync(
+                    _rxPipe.Writer,
+                    // RJCP's ReadAsync waits on an in-memory buffer and reliably
+                    // honours the cancellation token without Win32 CancelIoEx.
+                    (buffer, ct) => new ValueTask<int>(stream.ReadAsync(buffer, 0, buffer.Length, ct)),
+                    ex => Classify(ex, token),
+                    token)
+                .GetAwaiter().GetResult(),
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
     }
 
-    private static async Task RunPumpAsync(Stream stream, PipeWriter writer, CancellationToken token)
-    {
-        var readBuffer = new byte[512];
-
-        // Non-null once the port has failed. Handed to Complete so the reader sees the
-        // real cause instead of an end of stream indistinguishable from a clean close.
-        Exception? failure = null;
-
-        try
-        {
-            while (!token.IsCancellationRequested)
-            {
-                int bytesRead;
-                try
-                {
-                    // RJCP's ReadAsync waits on an in-memory buffer and reliably
-                    // honours the cancellation token without Win32 CancelIoEx.
-                    bytesRead = await stream.ReadAsync(readBuffer, 0, readBuffer.Length, token)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException ex) when (ex.CancellationToken == token)
-                {
-                    // DisposeAsync asked the pump to stop. A deliberate shutdown is a
-                    // clean completion, not a failure. Matching on the exception's own
-                    // token rather than on token.IsCancellationRequested keeps a driver
-                    // that cancels a read for its own reasons from being mistaken for
-                    // our shutdown when the two happen at once.
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    // The port died under us: adapter unplugged, driver error, another
-                    // process taking the handle. Anything that is not our own
-                    // cancellation has to reach the consumer.
-                    failure = ex;
-                    break;
-                }
-
-                if (bytesRead == 0) break;
-
-                readBuffer.AsSpan(0, bytesRead).CopyTo(writer.GetSpan(bytesRead));
-                writer.Advance(bytesRead);
-
-                var flush = await writer.FlushAsync(CancellationToken.None).ConfigureAwait(false);
-                if (flush.IsCompleted || flush.IsCanceled) break;
-            }
-        }
-        finally
-        {
-            writer.Complete(failure);
-        }
-    }
+    /// <summary>
+    /// RJCP's read path has no benign exception, so every exception is either our own
+    /// shutdown or a failure the consumer has to see.
+    /// </summary>
+    private static ReadDisposition Classify(Exception exception, CancellationToken token) =>
+        // DisposeAsync asked the pump to stop. A deliberate shutdown is a clean
+        // completion, not a failure. Matching on the exception's own token rather than on
+        // token.IsCancellationRequested keeps a driver that cancels a read for its own
+        // reasons from being mistaken for our shutdown when the two happen at once.
+        exception is OperationCanceledException canceled && canceled.CancellationToken == token
+            ? ReadDisposition.Shutdown
+            // The port died under us: adapter unplugged, driver error, another process
+            // taking the handle. Anything that is not our own cancellation has to reach
+            // the consumer.
+            : ReadDisposition.Failure;
 
     /// <summary>
     /// Signals the background pump to stop and waits for it to finish cleanly.
