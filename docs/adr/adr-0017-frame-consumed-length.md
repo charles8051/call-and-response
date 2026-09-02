@@ -1,5 +1,5 @@
 ---
-title: "ADR-0016: Separate Payload Extent from Frame Extent in FrameDetectionResult"
+title: "ADR-0017: Separate Payload Extent from Frame Extent in FrameDetectionResult"
 status: "Accepted"
 date: "2026-09-02"
 authors: "Repository maintainer"
@@ -8,7 +8,7 @@ supersedes: ""
 superseded_by: ""
 ---
 
-# ADR-0016: Separate Payload Extent from Frame Extent in FrameDetectionResult
+# ADR-0017: Separate Payload Extent from Frame Extent in FrameDetectionResult
 
 ## Status
 

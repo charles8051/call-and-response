@@ -163,7 +163,7 @@ checksum — use `FrameDetectionResult.Complete(payloadOffset, payloadLength,
 consumedLength)`. The transceiver returns the payload slice but consumes
 `consumedLength` bytes, so the delimiter cannot satisfy the next receive. The
 two-argument overload consumes to the end of the payload. See
-[ADR-0016](adr/adr-0016-frame-consumed-length.md).
+[ADR-0017](adr/adr-0017-frame-consumed-length.md).
 
 ### Message Detection Pattern
 
