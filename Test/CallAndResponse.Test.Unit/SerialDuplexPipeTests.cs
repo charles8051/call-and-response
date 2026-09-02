@@ -55,6 +55,7 @@ public class SerialDuplexPipeTests
     {
         var stream = new FakeSerialStream();
         var pipe = new SerialDuplexPipe(stream);
+        await stream.Parked.WaitAsync(Token());
 
         // DisposeAsync cancels the pump and waits for it; a deliberate shutdown must
         // not surface as a failure on either side.
@@ -65,5 +66,28 @@ public class SerialDuplexPipeTests
 
         read.IsCompleted.Should().BeTrue();
         read.Buffer.Length.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ReadPump_DriverCancelsItsOwnReadDuringShutdown_StillReportsTheFailure()
+    {
+        // A driver aborting a read for its own reasons at the same moment DisposeAsync
+        // runs must not be filed as a clean shutdown just because our token happens to
+        // be cancelled too.
+        using var deviceCts = new CancellationTokenSource();
+        deviceCts.Cancel();
+        var failure = new OperationCanceledException(
+            "The read was aborted by the driver.", deviceCts.Token);
+
+        var stream = new FakeSerialStream { FailOnCancellation = failure };
+        var pipe = new SerialDuplexPipe(stream);
+        await stream.Parked.WaitAsync(Token());
+
+        await pipe.DisposeAsync();
+
+        var act = async () => await pipe.Input.ReadAsync(Token());
+
+        (await act.Should().ThrowAsync<OperationCanceledException>())
+            .Which.Should().BeSameAs(failure);
     }
 }

@@ -86,10 +86,13 @@ public sealed class SerialDuplexPipe : IDuplexPipe, IAsyncDisposable
                     bytesRead = await stream.ReadAsync(readBuffer, 0, readBuffer.Length, token)
                         .ConfigureAwait(false);
                 }
-                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                catch (OperationCanceledException ex) when (ex.CancellationToken == token)
                 {
                     // DisposeAsync asked the pump to stop. A deliberate shutdown is a
-                    // clean completion, not a failure.
+                    // clean completion, not a failure. Matching on the exception's own
+                    // token rather than on token.IsCancellationRequested keeps a driver
+                    // that cancels a read for its own reasons from being mistaken for
+                    // our shutdown when the two happen at once.
                     break;
                 }
                 catch (Exception ex)

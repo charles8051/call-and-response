@@ -14,8 +14,23 @@ internal sealed class FakeSerialStream : Stream
     private readonly Queue<byte[]> _chunks;
     private readonly TaskCompletionSource<Exception> _failure =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _parked =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public FakeSerialStream(params byte[][] chunks) => _chunks = new Queue<byte[]>(chunks);
+
+    /// <summary>
+    /// Stands in for a driver that aborts a read for reasons of its own. When set, a
+    /// cancelled read throws this instead of an exception carrying the pump's token, so a
+    /// test can put a foreign cancellation and the pump's shutdown in the same instant.
+    /// </summary>
+    public Exception? FailOnCancellation { get; init; }
+
+    /// <summary>
+    /// Completes once a read has run out of scripted chunks and parked. Await it before
+    /// cancelling, so the pump is inside a read rather than still at its loop guard.
+    /// </summary>
+    public Task Parked => _parked.Task;
 
     /// <summary>Make the pending (or next) read throw <paramref name="exception"/>.</summary>
     public void Fail(Exception exception) => _failure.TrySetResult(exception);
@@ -32,7 +47,18 @@ internal sealed class FakeSerialStream : Stream
             return chunk.Length;
         }
 
-        throw await _failure.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        Exception failure;
+        _parked.TrySetResult();
+        try
+        {
+            failure = await _failure.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (FailOnCancellation is not null)
+        {
+            throw FailOnCancellation;
+        }
+
+        throw failure;
     }
 
     // PipeWriter.Create requires a writable stream; the tests never assert on what
