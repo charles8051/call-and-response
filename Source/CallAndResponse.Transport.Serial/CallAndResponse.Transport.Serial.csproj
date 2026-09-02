@@ -11,6 +11,10 @@
     <PackageReference Include="System.IO.Pipelines" Version="8.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="CallAndResponse.Test.Unit" />
+  </ItemGroup>
+
   <PropertyGroup>
     <Authors>Charles Lee</Authors>
     <Description>Serial port IDuplexPipe transport for CallAndResponse, backed by RJCP.SerialPortStream</Description>

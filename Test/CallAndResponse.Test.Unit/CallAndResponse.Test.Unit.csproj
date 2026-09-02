@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\Source\CallAndResponse\CallAndResponse.csproj" />
     <ProjectReference Include="..\..\Source\CallAndResponse.Protocol.Modbus\CallAndResponse.Protocol.Modbus.csproj" />
     <ProjectReference Include="..\..\Source\CallAndResponse.Protocol.Stm32Bootloader\CallAndResponse.Protocol.Stm32Bootloader.csproj" />
+    <ProjectReference Include="..\..\Source\CallAndResponse.Transport.Serial\CallAndResponse.Transport.Serial.csproj" />
   </ItemGroup>
 
 </Project>
