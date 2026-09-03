@@ -86,41 +86,9 @@ namespace CallAndResponse.Protocol.Modbus
                 throw new InvalidOperationException("Function code not supported");
             }
 
-            // Add CRC
-            return AddCrc(frame).ToArray();
-        }
-
-        private Memory<byte> AddCrc(ReadOnlySpan<byte> frame)
-        {
-            return AddCrc(frame.ToArray().ToList()).ToArray().AsMemory();
-            // TODO: Optimize
-        }
-
-        private List<byte> AddCrc(List<byte> frame)
-        {
-            // apply crc16 to frame, then return the frame with the crc16 appended
-            //var span = frame.Span;
-            ushort crc = 0xFFFF;
-
-            foreach (var value in frame)
-            {
-                crc ^= value;
-
-                for (int i = 0; i < 8; i++)
-                {
-                    if ((crc & 0x0001) != 0)
-                    {
-                        crc >>= 1;
-                        crc ^= 0xA001;
-                    }
-                    else
-                    {
-                        crc >>= 1;
-                    }
-                }
-            }
-
-            return frame.Concat(BitConverter.GetBytes(crc)).ToList();
+            // No CRC here. The codec appends it on send and verifies it on receive, so the two can
+            // no longer disagree and neither can be forgotten.
+            return frame.ToArray();
         }
     }
 }

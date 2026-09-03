@@ -1,4 +1,4 @@
-using CallAndResponse;
+﻿using CallAndResponse;
 using CallAndResponse.Protocol.Modbus;
 using CallAndResponse.Transport.Serial;
 using RJCP.IO.Ports;
@@ -12,8 +12,11 @@ await using var pipe = new SerialDuplexPipe(port);
 
 var transceiver = new Transceiver(pipe);
 
+// -- Bind Modbus RTU framing: the inter-frame gap plus the CRC --
+var channel = transceiver.WithFraming(ModbusRtu.Codec(ModbusRtu.GapFor(115200)));
+
 // -- Use it with a protocol client --
-var modbus = new ModbusRtuClient(transceiver);
+var modbus = new ModbusRtuClient(channel);
 
 using var cts = new CancellationTokenSource(5000);
 

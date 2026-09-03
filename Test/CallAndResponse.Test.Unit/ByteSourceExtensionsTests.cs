@@ -1,4 +1,4 @@
-using CallAndResponse.Test.Unit.Helpers;
+﻿using CallAndResponse.Test.Unit.Helpers;
 using FluentAssertions;
 
 namespace CallAndResponse.Test.Unit;
@@ -28,7 +28,7 @@ public class DuplexPipeExtensionsTests
         pipe.EnqueueRx(0x01, 0x02, 0x03);
 
         ITransceiver transceiver = pipe.AsTransceiver();
-        var result = await transceiver.SendReceiveExactly(new byte[] { 0xAA }, 3, Token());
+        var result = await transceiver.SendReceive(new byte[] { 0xAA }, Frame.Exactly(3), Token());
 
         pipe.SentBytes.Should().Equal(0xAA);
         result.ToArray().Should().Equal(0x01, 0x02, 0x03);

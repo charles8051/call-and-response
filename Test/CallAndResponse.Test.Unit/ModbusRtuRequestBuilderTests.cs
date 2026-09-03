@@ -1,4 +1,4 @@
-using CallAndResponse.Protocol.Modbus;
+﻿using CallAndResponse.Protocol.Modbus;
 using FluentAssertions;
 
 namespace CallAndResponse.Test.Unit;
@@ -43,8 +43,8 @@ public class ModbusRtuRequestBuilderTests
     {
         var frame = BuildFC03(unitId: 1, address: 0x0000, quantity: 1);
 
-        // 1 (unit id) + 1 (FC) + 2 (address) + 2 (quantity) + 2 (CRC)
-        frame.Should().HaveCount(8);
+        // 1 (unit id) + 1 (FC) + 2 (address) + 2 (quantity). The CRC belongs to the codec now.
+        frame.Should().HaveCount(6);
     }
 
     [Theory]
@@ -90,43 +90,19 @@ public class ModbusRtuRequestBuilderTests
         frame[5].Should().Be(expectedLow, "low byte of quantity");
     }
 
-    [Fact]
-    public void Build_FC03_CrcMatchesExpectedAlgorithm()
-    {
-        var frame = BuildFC03(unitId: 1, address: 0x006B, quantity: 3);
-
-        var expectedCrc = ComputeModbusCrc(FrameWithoutCrc(frame));
-        var actualCrc = CrcFromFrame(frame);
-
-        actualCrc.Should().Be(expectedCrc);
-    }
-
     /// <summary>
     /// Validates the CRC for [01 03 00 6B 00 03].
     /// Note: the commonly cited 0x7687 vector is for slave address 0x11, not 0x01.
     /// For unit id 0x01, the CRC is 0x1774 (stored little-endian as [0x74, 0x17]).
     /// </summary>
     [Fact]
-    public void Build_FC03_CrcMatchesKnownTestVector()
-    {
-        var frame = BuildFC03(unitId: 0x01, address: 0x006B, quantity: 0x0003);
-
-        // CRC 0x1774 stored little-endian
-        frame[^2].Should().Be(0x74, "CRC low byte");
-        frame[^1].Should().Be(0x17, "CRC high byte");
-    }
-
-    // -------------------------------------------------------------------------
-    // FC16 – Write Multiple Registers
-    // -------------------------------------------------------------------------
-
-    [Fact]
     public void Build_FC16_HasCorrectLength()
     {
-        // 1 (unit) + 1 (FC) + 2 (address) + 2 (qty) + 1 (byte count) + 4 (data) + 2 (CRC) = 13
+        // 1 (unit) + 1 (FC) + 2 (address) + 2 (qty) + 1 (byte count) + 4 (data) = 11.
+        // The CRC belongs to the codec now.
         var frame = BuildFC16(unitId: 1, address: 0x0000, data: new byte[] { 0x01, 0x02, 0x03, 0x04 });
 
-        frame.Should().HaveCount(13);
+        frame.Should().HaveCount(11);
     }
 
     [Fact]
@@ -160,17 +136,6 @@ public class ModbusRtuRequestBuilderTests
         frame[8].Should().Be(0xAA, "low byte of first word");
         frame[9].Should().Be(0xDD, "high byte of second word");
         frame[10].Should().Be(0xCC, "low byte of second word");
-    }
-
-    [Fact]
-    public void Build_FC16_CrcMatchesExpectedAlgorithm()
-    {
-        var frame = BuildFC16(unitId: 1, address: 0x0001, data: new byte[] { 0x00, 0x0A });
-
-        var expectedCrc = ComputeModbusCrc(FrameWithoutCrc(frame));
-        var actualCrc = CrcFromFrame(frame);
-
-        actualCrc.Should().Be(expectedCrc);
     }
 
     [Fact]

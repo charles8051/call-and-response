@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CallAndResponse;
+using CallAndResponse.Framing;
 
 namespace CallAndResponse.Protocol.Stm32Bootloader
 {
@@ -50,10 +51,24 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
 
         public async Task<Stm32ProtocolInfo> GetSupportedCommands(CancellationToken token = default)
         {
-            var result = await _transceiver.SendReceiveHeaderFooter(new byte[] { (byte)Stm32BootloaderCommand.Get, 0xFF }, new byte[] { Ack }, new byte[] { Ack }, token);
+            // AN3155 section 3.2: the reply is ACK, N, version, N command bytes, ACK. The opening
+            // ACK is read on its own so a NACK is reported as one instead of leaving the length
+            // decoder waiting for a byte count that will never arrive.
+            await SendAndExpectAck(new byte[] { (byte)Stm32BootloaderCommand.Get, 0xFF }, nameof(GetSupportedCommands), token);
 
-            var supportedCommands = new List<Stm32BootloaderCommand>(); 
-            foreach (var command in result.Span.Slice(2).ToArray())
+            // What follows is N, then N + 2 more bytes: the version, the commands, and the closing ACK.
+            var result = await _transceiver.Receive(
+                Frame.LengthPrefixed(prefixOffset: 0, prefixSize: 1, lengthAdjustment: 2), token);
+
+            int commandCount = result.Span[0];
+            if (result.Span[result.Length - 1] != Ack)
+            {
+                throw new Stm32BootloaderException(
+                    $"Malformed Get response {BitConverter.ToString(result.ToArray())}: no closing ACK");
+            }
+
+            var supportedCommands = new List<Stm32BootloaderCommand>();
+            foreach (var command in result.Span.Slice(2, commandCount).ToArray())
             {
                 if (!Enum.IsDefined(typeof(Stm32BootloaderCommand), command))
                 {
@@ -66,7 +81,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
 
         public async Task<bool> Ping(CancellationToken token = default)
         {
-            var result = await _transceiver.SendReceiveExactly(new byte[] { 0x7F }, 1, token);
+            var result = await _transceiver.SendReceive(new byte[] { 0x7F }, Frame.Exactly(1), token);
             if (result.Span[0] == Ack)
             {
                 return true;
@@ -83,7 +98,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
 
         public async Task<byte> Special(CancellationToken token = default)
         {
-            var result = await _transceiver.SendReceiveExactly(new byte[] { (byte)Stm32BootloaderCommand.Special, 0xAF }, 1, token);
+            var result = await _transceiver.SendReceive(new byte[] { (byte)Stm32BootloaderCommand.Special, 0xAF }, Frame.Exactly(1), token);
             return result.Span[0];
         }
 
@@ -105,7 +120,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         /// <exception cref="Stm32BootloaderException">The device answered NACK or an unexpected byte.</exception>
         public async Task<Stm32VersionInfo> GetProtocolVersion(CancellationToken token = default)
         {
-            var result = await _transceiver.SendReceiveExactly(new byte[] { (byte)Stm32BootloaderCommand.GetVersion, 0xFE }, 5, token);
+            var result = await _transceiver.SendReceive(new byte[] { (byte)Stm32BootloaderCommand.GetVersion, 0xFE }, Frame.Exactly(5), token);
             EnsureAck(result.Span, nameof(GetProtocolVersion));
             EnsureAck(result.Span.Slice(4), nameof(GetProtocolVersion));
             return new Stm32VersionInfo(result.Span[1], result.Span[2], result.Span[3]);
@@ -115,10 +130,9 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         // The product id is the two bytes at [2..3]; index 4 is the closing ACK.
         public async Task<ushort> GetId(CancellationToken token = default)
         {
-            //var result = await _transceiver.SendReceiveHeaderFooter(new byte[] { (byte)Stm32BootloaderCommand.GetId, 0xFD }, new byte[] { Ack }, new byte[] { Ack }, token);
-            var result = await _transceiver.SendReceiveExactly(new byte[] { (byte)Stm32BootloaderCommand.GetId, 0xFD }, 5, token);
+            var result = await _transceiver.SendReceive(new byte[] { (byte)Stm32BootloaderCommand.GetId, 0xFD }, Frame.Exactly(5), token);
 
-            // SendReceiveExactly only guarantees the byte count, so check the framing before trusting
+            // Frame.Exactly only guarantees the byte count, so check the framing before trusting
             // the payload. A stream left out of sync by an earlier command can deliver five bytes whose
             // [2..3] would otherwise parse as a plausible id.
             if (result.Span[0] != Ack || result.Span[1] != 0x01 || result.Span[4] != Ack)
@@ -148,7 +162,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             if (length > 256) throw new ArgumentException();
 
             // Initiate command
-            await _transceiver.SendReceiveExactly(new byte[] { (byte)Stm32BootloaderCommand.ReadMemory, 0xEE }, 1, token);
+            await _transceiver.SendReceive(new byte[] { (byte)Stm32BootloaderCommand.ReadMemory, 0xEE }, Frame.Exactly(1), token);
 
             var addressBytes = BitConverter.GetBytes(address);
             Array.Reverse(addressBytes);
@@ -157,10 +171,10 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             var sendBytes = addressBytes.ToList();
             sendBytes.Add(checksum);
 
-            await _transceiver.SendReceiveExactly(sendBytes.ToArray(), 1, token);
+            await _transceiver.SendReceive(sendBytes.ToArray(), Frame.Exactly(1), token);
 
             var byteLengthChecksum = (byte)((length-1) ^ 0xFF);
-            var result = await _transceiver.SendReceiveExactly( new byte[] { (byte)(length-1), byteLengthChecksum }, (int)length + 1, token);
+            var result = await _transceiver.SendReceive( new byte[] { (byte)(length-1), byteLengthChecksum }, Frame.Exactly((int)length + 1), token);
             return result.Slice(1);
         }
 
@@ -184,14 +198,14 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
                 throw new ArgumentException("Data length must be less than or equal to 256 bytes");
             }
 
-            await _transceiver.SendReceivePerfectMatch(new byte[] { (byte)Stm32BootloaderCommand.WriteMemory, 0xCE }, new byte[] { Ack }, token);
+            await SendAndExpectAck(new byte[] { (byte)Stm32BootloaderCommand.WriteMemory, 0xCE }, nameof(WriteMemory), token);
 
             var addressBytes = BitConverter.GetBytes(address);
             Array.Reverse(addressBytes);
             var checksum = (byte)(addressBytes[0] ^ addressBytes[1] ^ addressBytes[2] ^ addressBytes[3]);
             var sendBytes = addressBytes.ToList();
             sendBytes.Add(checksum);
-            await _transceiver.SendReceivePerfectMatch(sendBytes.ToArray(), new byte[] { Ack }, token);
+            await SendAndExpectAck(sendBytes.ToArray(), nameof(WriteMemory), token);
 
             var length = (byte)(data.Length-1);
             byte dataChecksum = (byte)(~(ComputeChecksum(data.ToArray()) ^ (byte)length));
@@ -200,7 +214,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             sendBytes.AddRange(data.ToArray());
             sendBytes.Add(dataChecksum);
 
-            await _transceiver.SendReceivePerfectMatch(sendBytes.ToArray(), new byte[] { Ack }, token);
+            await SendAndExpectAck(sendBytes.ToArray(), nameof(WriteMemory), token);
         }
 
         private byte ComputeChecksum(byte[] data)
@@ -213,13 +227,13 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
 
         public async Task Go(uint jumpAddress = Stm32BaseAddress, CancellationToken token = default)
         {
-            await _transceiver.SendReceivePerfectMatch(new byte[] { (byte)Stm32BootloaderCommand.Go, 0xDE }, new byte[] { Ack }, token);
+            await SendAndExpectAck(new byte[] { (byte)Stm32BootloaderCommand.Go, 0xDE }, nameof(Go), token);
 
             var addressBytes = BitConverter.GetBytes(jumpAddress);
             Array.Reverse(addressBytes);
             byte addressChecksumByte = (byte)(addressBytes[0] ^ addressBytes[1] ^ addressBytes[2] ^ addressBytes[3]);
             var payload = addressBytes.Append(addressChecksumByte);
-            await _transceiver.SendReceivePerfectMatch(payload.ToArray(), new byte[] { Ack }, token);
+            await SendAndExpectAck(payload.ToArray(), nameof(Go), token);
         }
 
         /// <summary>
@@ -397,13 +411,13 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
 
         private async Task SendExtendedErase(ushort[] shorts, CancellationToken token)
         {
-            await _transceiver.SendReceivePerfectMatch(new byte[] { (byte)Stm32BootloaderCommand.ExtendedEraseMemory, 0xBB }, new byte[] { Ack }, token);
+            await SendAndExpectAck(new byte[] { (byte)Stm32BootloaderCommand.ExtendedEraseMemory, 0xBB }, nameof(SendExtendedErase), token);
 
             var payload = shorts.SelectMany((x) => { var b = BitConverter.GetBytes(x); Array.Reverse(b); return b; });
             var checksum = (byte)~(ComputeChecksum(payload.ToArray()));
             payload = payload.Append(checksum);
 
-            await _transceiver.SendReceivePerfectMatch(payload.ToArray(), new byte[] { Ack }, token);
+            await SendAndExpectAck(payload.ToArray(), nameof(SendExtendedErase), token);
         }
 
         /// <summary>
@@ -546,7 +560,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
             await SendAndExpectAck(BigEndianWithChecksum(crcInitialValue), nameof(GetChecksum), token);
 
             // ACK, then the CRC value MSB first, then the XOR of those four bytes.
-            var result = await _transceiver.ReceiveExactly(6, token);
+            var result = await _transceiver.Receive(Frame.Exactly(6), token);
             EnsureAck(result.Span, nameof(GetChecksum));
 
             var crc = result.Slice(1, 4).ToArray();
@@ -566,7 +580,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         /// </summary>
         private async Task SendAndExpectAck(byte[] frame, string commandName, CancellationToken token)
         {
-            var result = await _transceiver.SendReceiveExactly(frame, 1, token);
+            var result = await _transceiver.SendReceive(frame, Frame.Exactly(1), token);
             EnsureAck(result.Span, commandName);
         }
 
@@ -576,7 +590,7 @@ namespace CallAndResponse.Protocol.Stm32Bootloader
         /// </summary>
         private async Task ExpectAck(string commandName, CancellationToken token)
         {
-            var result = await _transceiver.ReceiveExactly(1, token);
+            var result = await _transceiver.Receive(Frame.Exactly(1), token);
             EnsureAck(result.Span, commandName);
         }
 
