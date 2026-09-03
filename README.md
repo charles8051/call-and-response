@@ -39,8 +39,11 @@ await using var pipe = new SerialDuplexPipe(port);
 
 var transceiver = new Transceiver(pipe);
 
+// Bind Modbus RTU framing: the inter-frame gap plus the CRC-16
+var channel = ModbusRtu.Channel(transceiver, baudRate: 115200);
+
 // Use it with a protocol client
-var modbus = new ModbusRtuClient(transceiver);
+var modbus = new ModbusRtuClient(channel);
 
 var registers = await modbus.ReadHoldingRegisters(
     unitIdentifier: 1,
@@ -51,19 +54,44 @@ var registers = await modbus.ReadHoldingRegisters(
 
 ### Quick Example — Custom Framing
 
-```csharp
-// Receive until a specific header + footer pattern is found
-var payload = await transceiver.SendReceiveHeaderFooter(
-    writeBytes: new byte[] { 0x01, 0x02 },
-    header: new byte[] { 0xAA },
-    footer: new byte[] { 0x55 },
-    token: cancellationToken);
+Framing is a value you pass in, so the strategies compose.
 
-// Or use temporal framing for unsolicited data (e.g., barcode scanners)
-var burst = await transceiver.ReceiveUntilIdle(
-    idleTimeout: TimeSpan.FromMilliseconds(100),
-    token: cancellationToken);
+```csharp
+// Receive the bytes between a header and a footer
+var payload = await transceiver.SendReceive(
+    new byte[] { 0x01, 0x02 },
+    Frame.Between(header: new byte[] { 0xAA }, footer: new byte[] { 0x55 }),
+    cancellationToken);
+
+// Temporal framing for unsolicited data (barcode scanners, NMEA bursts)
+var burst = await transceiver.Receive(
+    Frame.UntilIdle(TimeSpan.FromMilliseconds(100)),
+    cancellationToken);
+
+// A length-prefixed reply, checked before it reaches you
+var frame = await transceiver.Receive(
+    Frame.LengthPrefixed(prefixOffset: 1, prefixSize: 2).Validated(MyChecksum),
+    cancellationToken);
+
+// Bound a stalled reply: fail after a 50ms gap rather than waiting out your token
+var reply = await transceiver.Receive(
+    Frame.Exactly(16).WithIdleTimeout(TimeSpan.FromMilliseconds(50)),
+    cancellationToken);
 ```
+
+### Quick Example — SLIP or PPP-style framing
+
+For a self-delimiting link, bind a codec once and then send and receive payloads. Delimiters,
+escapes, and the checksum stop being your problem.
+
+```csharp
+IMessageTransceiver channel = transceiver.WithFraming(new SlipCodec());
+
+var reply = await channel.SendReceiveMessage(request, cancellationToken);
+```
+
+`HdlcCodec` is the same for RFC 1662 asynchronous HDLC framing, including the FCS. It is the framing
+half of PPP and nothing above it — no LCP, no authentication, no NCPs.
 
 ### Quick Example — STM32 Firmware Update
 
@@ -87,7 +115,7 @@ if (await bootloader.Ping(cancellationToken))
 
 | Package | Description |
 |---|---|
-| `CallAndResponse` | Core library — `ITransceiver`, `Transceiver`, framing extensions, exceptions |
+| `CallAndResponse` | Core library — the channel contracts, `Transceiver`, the `Frame` catalogue, SLIP and HDLC codecs, exceptions |
 | `CallAndResponse.Transport.Serial` | `SerialDuplexPipe` over `RJCP.SerialPortStream` |
 | `CallAndResponse.Protocol.Modbus` | Modbus RTU client (FC03 read, FC16 write) |
 | `CallAndResponse.Protocol.Stm32Bootloader` | STM32 system bootloader commands (read/write/erase flash) |
@@ -100,19 +128,22 @@ to NuGet. Reference the project directly, or copy `BleNordicUartPipe.cs`.
 The library has three layers that only depend downward:
 
 ```
-Protocol Layer       (Modbus, STM32 — depend only on ITransceiver)
+Protocol Layer       (Modbus, STM32 — depend only on the channel abstractions)
     ↓
-Core Abstraction     (ITransceiver, Transceiver, framing extensions)
+Core Abstraction     (ITransceiver, IMessageTransceiver, Transceiver)
+    ↓
+Framing Layer        (Frame.* decoders, SlipCodec, HdlcCodec, ModbusRtu.Codec)
     ↓
 Transport Layer      (SerialDuplexPipe, BleNordicUartPipe — implement IDuplexPipe)
 ```
 
-- **`Transceiver`** takes an `IDuplexPipe`, or a `PipeReader` + `PipeWriter` pair,
-  and provides framed message exchange. All convenience methods
-  (`SendReceiveExactly`, `ReceiveUntilTerminator`, etc.) are extension methods on
-  `ITransceiver`.
-- **Protocol clients** accept `ITransceiver` and use the convenience methods to
-  implement protocol-specific operations. They never reference a transport package.
+- **`ITransceiver`** is a byte channel: sends go out verbatim, and each receive is directed by the
+  decoder you pass in. **`IMessageTransceiver`** is a message channel whose framing is fixed by the
+  link, so you send and receive payloads. `WithFraming` and `AsByteStream` move between them.
+- **Framing is a value**, not a method per strategy. `Frame.Exactly(4)`, `Frame.UntilIdle(gap)`, and
+  `new SlipCodec()` are all things you pass, and the combinators compose them.
+- **Protocol clients** accept whichever channel their protocol actually needs. They never reference a
+  transport package.
 - **Transport packages** each provide a single `IDuplexPipe`. The caller owns the
   underlying connection and its lifecycle.
 
@@ -146,7 +177,7 @@ for complete working examples.
 
 ## Adding a Protocol
 
-Accept `ITransceiver` via constructor and use the convenience methods:
+Take `ITransceiver` when the protocol decides its own frame boundaries:
 
 ```csharp
 public class MyProtocolClient
@@ -158,15 +189,31 @@ public class MyProtocolClient
 
     public async Task<byte[]> ReadDeviceId(CancellationToken token)
     {
-        var response = await _transceiver.SendReceiveExactly(
+        var response = await _transceiver.SendReceive(
             new byte[] { 0x01 },
-            numBytesExpected: 4,
+            Frame.Exactly(4),
             token);
 
         return response.ToArray();
     }
 }
 ```
+
+Take `IMessageTransceiver` when the link is self-delimiting. Such a client runs over SLIP, over
+HDLC, or over a terminator codec without modification, because it never states a byte boundary:
+
+```csharp
+public class MyMessageClient(IMessageTransceiver channel)
+{
+    public async Task<Reply> Ask(Request request, CancellationToken token) =>
+        Parse(await channel.SendReceiveMessage(Build(request), token));
+}
+```
+
+If your protocol has framing of its own — a checksum, a delimiter, an inter-frame gap — put it in an
+`IFrameCodec` and hand out a channel type built from it, the way `ModbusRtu.Channel` does. A client
+that accepts any `IMessageTransceiver` while assuming its own framing will accept the wrong one
+silently.
 
 ## Project Structure
 
@@ -176,9 +223,12 @@ CallAndResponse/
 │   ├── CallAndResponse/                          Core library
 │   │   ├── ITransceiver.cs                       Protocol-facing contract
 │   │   ├── Transceiver.cs                        Pipe-backed implementation
-│   │   ├── TransceiverExtensions.cs              Convenience framing methods
+│   │   ├── IMessageTransceiver.cs                Message-channel contract
+│   │   ├── MessageTransceiver.cs                 Binds a codec to a link
+│   │   ├── ByteStreamAdapter.cs                  Message channel as a byte channel
+│   │   ├── TransceiverExtensions.cs              SendReceive, WithFraming, AsByteStream
 │   │   ├── DuplexPipeExtensions.cs               AsTransceiver() extension
-│   │   ├── FrameDetectionResult.cs               Frame detection return type
+│   │   ├── Framing/                              Decoders, codecs, and combinators
 │   │   └── TransceiverTransportException.cs      I/O-level exception
 │   │
 │   ├── CallAndResponse.Transport.Serial/         SerialDuplexPipe (RJCP)

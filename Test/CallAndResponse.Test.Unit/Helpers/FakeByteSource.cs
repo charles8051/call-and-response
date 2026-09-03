@@ -30,4 +30,7 @@ internal sealed class FakeDuplexPipe : IDuplexPipe
         _rxPipe.Writer.WriteAsync(new ReadOnlyMemory<byte>(bytes))
             .AsTask().GetAwaiter().GetResult();
     }
+
+    /// <summary>Close the receive side, as a transport does when the link drops.</summary>
+    public void CompleteRx(Exception? failure = null) => _rxPipe.Writer.Complete(failure);
 }

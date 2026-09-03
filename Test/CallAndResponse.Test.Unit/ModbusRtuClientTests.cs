@@ -1,4 +1,4 @@
-using CallAndResponse.Protocol.Modbus;
+﻿using CallAndResponse.Protocol.Modbus;
 using CallAndResponse.Test.Unit.Helpers;
 using FluentAssertions;
 
@@ -14,24 +14,52 @@ public class ModbusRtuClientTests
     private static CancellationToken Token(int ms = 2000) =>
         new CancellationTokenSource(ms).Token;
 
+    // RTU frames on the inter-frame gap, so the fake has to be allowed to go quiet. The gap is
+    // short here because nothing follows it; a real link derives it from the baud rate.
+    private static ModbusRtuChannel Channel(FakeDuplexPipe pipe) =>
+        ModbusRtu.Channel(pipe.AsTransceiver(), TimeSpan.FromMilliseconds(20));
+
+    // A test oracle for the CRC the codec now checks. Deliberately a second implementation
+    // rather than a call into the codec, so a wrong polynomial fails instead of agreeing.
+    private static byte[] WithCrc(List<byte> frame)
+    {
+        ushort crc = 0xFFFF;
+        foreach (byte value in frame)
+        {
+            crc ^= value;
+            for (int i = 0; i < 8; i++)
+            {
+                crc = (crc & 0x0001) != 0 ? (ushort)((crc >> 1) ^ 0xA001) : (ushort)(crc >> 1);
+            }
+        }
+
+        frame.Add((byte)(crc & 0xFF));
+        frame.Add((byte)(crc >> 8));
+        return frame.ToArray();
+    }
+
     // FC03 response: unit id (1) + FC (1) + byte count (1) + data (n) + CRC (2)
     private static byte[] BuildFC03Response(byte unitId, byte[] data)
     {
         var frame = new List<byte> { unitId, 0x03, (byte)data.Length };
         frame.AddRange(data);
-        frame.AddRange(new byte[] { 0x00, 0x00 }); // CRC not validated yet
-        return frame.ToArray();
+        return WithCrc(frame);
     }
+
+    // Exception response: unit id (1) + FC with the error bit set (1) + code (1) + CRC (2).
+    // Five bytes, shorter than any success response — which is the whole point: under the old
+    // length-based framing this frame never completed and the call hung until cancellation.
+    private static byte[] BuildExceptionResponse(byte unitId, byte functionCode, ModbusProtocolExceptionCode code) =>
+        WithCrc(new List<byte> { unitId, (byte)(functionCode | 0x80), (byte)code });
 
     // FC16 response: unit id (1) + FC (1) + address (2) + quantity (2) + CRC (2) = 8 bytes
     private static byte[] BuildFC16Response(byte unitId, ushort address, ushort quantity) =>
-        new byte[]
+        WithCrc(new List<byte>
         {
             unitId, 0x10,
             (byte)(address >> 8), (byte)(address & 0xFF),
             (byte)(quantity >> 8), (byte)(quantity & 0xFF),
-            0x00, 0x00
-        };
+        });
 
     // =========================================================================
     // ReadHoldingRegisters — frame construction
@@ -43,7 +71,7 @@ public class ModbusRtuClientTests
         var pipe = new FakeDuplexPipe();
         pipe.EnqueueRx(BuildFC03Response(0x01, new byte[] { 0x00, 0x0A, 0x00, 0x0B }));
 
-        var client = new ModbusRtuClient(pipe.AsTransceiver());
+        var client = new ModbusRtuClient(Channel(pipe));
         await client.ReadHoldingRegisters(unitIdentifier: 0x01, startingAddress: 0x006B, numRegisters: 2, Token());
 
         var frame = pipe.SentBytes.ToArray();
@@ -64,7 +92,7 @@ public class ModbusRtuClientTests
         var pipe = new FakeDuplexPipe();
         pipe.EnqueueRx(BuildFC03Response(0x01, new byte[] { 0x00, 0x00 }));
 
-        var client = new ModbusRtuClient(pipe.AsTransceiver());
+        var client = new ModbusRtuClient(Channel(pipe));
         await client.ReadHoldingRegisters(0x01, address, numRegisters: 1, Token());
 
         pipe.SentBytes.ToArray()[2].Should().Be(expectedHi, "address high byte");
@@ -82,7 +110,7 @@ public class ModbusRtuClientTests
         // Device responds with two big-endian registers: [0x00, 0x0A] and [0x00, 0x0B]
         pipe.EnqueueRx(BuildFC03Response(0x01, new byte[] { 0x00, 0x0A, 0x00, 0x0B }));
 
-        var client = new ModbusRtuClient(pipe.AsTransceiver());
+        var client = new ModbusRtuClient(Channel(pipe));
         var result = await client.ReadHoldingRegisters(0x01, 0x0000, numRegisters: 2, Token());
 
         // After Flip16BitValues the pairs are swapped to little-endian
@@ -96,7 +124,7 @@ public class ModbusRtuClientTests
         // 5 overhead + 2 * 2 registers = 9 bytes
         pipe.EnqueueRx(BuildFC03Response(0x01, new byte[] { 0x00, 0x0A, 0x00, 0x0B }));
 
-        var client = new ModbusRtuClient(pipe.AsTransceiver());
+        var client = new ModbusRtuClient(Channel(pipe));
         var result = await client.ReadHoldingRegisters(0x01, 0x0000, numRegisters: 2, Token());
 
         // Result has 4 data bytes (2 registers * 2 bytes each); overhead bytes consumed by SendReceiveExactly
@@ -111,11 +139,9 @@ public class ModbusRtuClientTests
     public async Task ReadHoldingRegisters_ErrorBitSet_ThrowsModbusProtocolException()
     {
         var pipe = new FakeDuplexPipe();
-        // FC with error bit set (0x83), exception code 0x02 = IllegalDataAddress
-        // Pad to 7 bytes to match SendReceiveExactly(5 + 2*numRegisters) for numRegisters:1
-        pipe.EnqueueRx(0x01, 0x83, 0x02, 0x00, 0x00, 0x00, 0x00);
+        pipe.EnqueueRx(BuildExceptionResponse(0x01, 0x03, ModbusProtocolExceptionCode.IllegalDataAddress));
 
-        var client = new ModbusRtuClient(pipe.AsTransceiver());
+        var client = new ModbusRtuClient(Channel(pipe));
         var act = async () => await client.ReadHoldingRegisters(0x01, 0x0000, numRegisters: 1, Token());
 
         await act.Should()
@@ -131,10 +157,9 @@ public class ModbusRtuClientTests
     public async Task ReadHoldingRegisters_ErrorCode_PropagatedInException(ModbusProtocolExceptionCode code)
     {
         var pipe = new FakeDuplexPipe();
-        // Pad to 7 bytes to match SendReceiveExactly(5 + 2*numRegisters) for numRegisters:1
-        pipe.EnqueueRx(0x01, 0x83, (byte)code, 0x00, 0x00, 0x00, 0x00);
+        pipe.EnqueueRx(BuildExceptionResponse(0x01, 0x03, code));
 
-        var client = new ModbusRtuClient(pipe.AsTransceiver());
+        var client = new ModbusRtuClient(Channel(pipe));
         var act = async () => await client.ReadHoldingRegisters(0x01, 0x0000, numRegisters: 1, Token());
 
         await act.Should()
@@ -149,7 +174,7 @@ public class ModbusRtuClientTests
         // Response carries unit id 0x02, but the request was for unit 0x01
         pipe.EnqueueRx(BuildFC03Response(unitId: 0x02, new byte[] { 0x00, 0x0A }));
 
-        var client = new ModbusRtuClient(pipe.AsTransceiver());
+        var client = new ModbusRtuClient(Channel(pipe));
         var act = async () => await client.ReadHoldingRegisters(0x01, 0x0000, numRegisters: 1, Token());
 
         await act.Should().ThrowAsync<ModbusFramingException>();
@@ -162,7 +187,7 @@ public class ModbusRtuClientTests
         // Response echoes FC16 (0x10) instead of FC03 (0x03)
         pipe.EnqueueRx(0x01, 0x10, 0x02, 0x00, 0x0A, 0x00, 0x00);
 
-        var client = new ModbusRtuClient(pipe.AsTransceiver());
+        var client = new ModbusRtuClient(Channel(pipe));
         var act = async () => await client.ReadHoldingRegisters(0x01, 0x0000, numRegisters: 1, Token());
 
         await act.Should().ThrowAsync<ModbusFramingException>();
@@ -178,7 +203,7 @@ public class ModbusRtuClientTests
         var pipe = new FakeDuplexPipe();
         pipe.EnqueueRx(BuildFC16Response(0x01, 0x0001, 2));
 
-        var client = new ModbusRtuClient(pipe.AsTransceiver());
+        var client = new ModbusRtuClient(Channel(pipe));
         await client.WriteRegisters(0x01, 0x0001, new byte[] { 0xAA, 0xBB, 0xCC, 0xDD }, Token());
 
         var frame = pipe.SentBytes.ToArray();
@@ -196,7 +221,7 @@ public class ModbusRtuClientTests
         var pipe = new FakeDuplexPipe();
         pipe.EnqueueRx(BuildFC16Response(0x01, 0x0000, 2));
 
-        var client = new ModbusRtuClient(pipe.AsTransceiver());
+        var client = new ModbusRtuClient(Channel(pipe));
         await client.WriteRegisters(0x01, 0x0000, new byte[] { 0x01, 0x02, 0x03, 0x04 }, Token());
 
         // byte count field is at index 6
@@ -211,10 +236,9 @@ public class ModbusRtuClientTests
     public async Task WriteRegisters_ErrorBitSet_ThrowsModbusProtocolException()
     {
         var pipe = new FakeDuplexPipe();
-        // FC16 with error bit set (0x90), exception code 0x01 = IllegalFunction
-        pipe.EnqueueRx(0x01, 0x90, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00);
+        pipe.EnqueueRx(BuildExceptionResponse(0x01, 0x10, ModbusProtocolExceptionCode.IllegalFunction));
 
-        var client = new ModbusRtuClient(pipe.AsTransceiver());
+        var client = new ModbusRtuClient(Channel(pipe));
         var act = async () => await client.WriteRegisters(0x01, 0x0000, new byte[] { 0x00, 0x01 }, Token());
 
         await act.Should()
@@ -228,7 +252,7 @@ public class ModbusRtuClientTests
         var pipe = new FakeDuplexPipe();
         pipe.EnqueueRx(BuildFC16Response(unitId: 0x02, 0x0000, 1));
 
-        var client = new ModbusRtuClient(pipe.AsTransceiver());
+        var client = new ModbusRtuClient(Channel(pipe));
         var act = async () => await client.WriteRegisters(0x01, 0x0000, new byte[] { 0x00, 0x01 }, Token());
 
         await act.Should().ThrowAsync<ModbusFramingException>();

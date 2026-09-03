@@ -1,4 +1,4 @@
-using CallAndResponse.Test.Unit.Helpers;
+﻿using CallAndResponse.Test.Unit.Helpers;
 using FluentAssertions;
 using System.Text;
 
@@ -24,7 +24,7 @@ public class TransceiverTests
         var sut = pipe.AsTransceiver();
         pipe.EnqueueRx(0x01, 0x02, 0x03);
 
-        var result = await sut.ReceiveExactly(3, Token());
+        var result = await sut.Receive(Frame.Exactly(3), Token());
 
         result.ToArray().Should().Equal(0x01, 0x02, 0x03);
     }
@@ -37,7 +37,7 @@ public class TransceiverTests
         pipe.EnqueueRx(0xAA, 0xBB);
         _ = Task.Run(async () => { await Task.Delay(50); pipe.EnqueueRx(0xCC); });
 
-        var result = await sut.ReceiveExactly(3, Token());
+        var result = await sut.Receive(Frame.Exactly(3), Token());
 
         result.ToArray().Should().Equal(0xAA, 0xBB, 0xCC);
     }
@@ -49,7 +49,7 @@ public class TransceiverTests
         var sut = pipe.AsTransceiver();
         pipe.EnqueueRx(0x01, 0x02, 0x03, 0x04, 0x05);
 
-        var result = await sut.ReceiveExactly(3, Token());
+        var result = await sut.Receive(Frame.Exactly(3), Token());
 
         result.Length.Should().Be(3);
         result.ToArray().Should().Equal(0x01, 0x02, 0x03);
@@ -66,7 +66,7 @@ public class TransceiverTests
         var sut = pipe.AsTransceiver();
         pipe.EnqueueRx((byte)'O', (byte)'K', (byte)'\n');
 
-        var result = await sut.ReceiveUntilTerminator('\n', Token());
+        var result = await sut.Receive(Frame.UntilTerminator((byte)'\n'), Token());
 
         result.ToArray().Should().Equal((byte)'O', (byte)'K');
     }
@@ -78,7 +78,7 @@ public class TransceiverTests
         var sut = pipe.AsTransceiver();
         pipe.EnqueueRx((byte)'H', (byte)'i', (byte)'\r');
 
-        var result = await sut.ReceiveUntilTerminator('\r', Token());
+        var result = await sut.Receive(Frame.UntilTerminator((byte)'\r'), Token());
 
         result.ToArray().Should().NotContain((byte)'\r');
     }
@@ -94,7 +94,7 @@ public class TransceiverTests
         var sut = pipe.AsTransceiver();
         pipe.EnqueueRx(0x01, 0x02, 0xFF, 0xFE);
 
-        var result = await sut.ReceiveUntilTerminatorPattern(new byte[] { 0xFF, 0xFE }, Token());
+        var result = await sut.Receive(Frame.UntilPattern(new byte[] { 0xFF, 0xFE }), Token());
 
         result.ToArray().Should().Equal(0x01, 0x02);
     }
@@ -106,55 +106,10 @@ public class TransceiverTests
         var sut = pipe.AsTransceiver();
         pipe.EnqueueRx((byte)'O', (byte)'K', (byte)'\r', (byte)'\n');
 
-        var result = await sut.ReceiveUntilTerminatorPattern(new byte[] { (byte)'\r', (byte)'\n' }, Token());
+        var result = await sut.Receive(Frame.UntilPattern(new byte[] { (byte)'\r', (byte)'\n' }), Token());
 
         Encoding.ASCII.GetString(result.ToArray()).Should().Be("OK");
     }
-
-    [Fact]
-    public async Task ReceiveUntilTerminatorPattern_PatternNotIncludedInResult()
-    {
-        var pipe = new FakeDuplexPipe();
-        var sut = pipe.AsTransceiver();
-        pipe.EnqueueRx(0xAA, 0xBB, 0xCC, 0xDD);
-
-        var result = await sut.ReceiveUntilTerminatorPattern(new byte[] { 0xCC, 0xDD }, Token());
-
-        result.ToArray().Should().NotContain(0xCC);
-        result.ToArray().Should().NotContain(0xDD);
-    }
-
-    // =========================================================================
-    // ReceiveUntilPerfectMatch
-    // =========================================================================
-
-    [Fact]
-    public async Task ReceiveUntilPerfectMatch_ExactMatch_ReturnsMatchBytes()
-    {
-        var pipe = new FakeDuplexPipe();
-        var sut = pipe.AsTransceiver();
-        pipe.EnqueueRx(0x01, 0x02, 0x03);
-
-        var result = await sut.ReceiveUntilPerfectMatch(new byte[] { 0x01, 0x02, 0x03 }, Token());
-
-        result.ToArray().Should().Equal(0x01, 0x02, 0x03);
-    }
-
-    [Fact]
-    public async Task ReceiveUntilPerfectMatch_MatchAfterLeadingBytes_ReturnsMatchBytesOnly()
-    {
-        var pipe = new FakeDuplexPipe();
-        var sut = pipe.AsTransceiver();
-        pipe.EnqueueRx(0x00, 0x01, 0x02);
-
-        var result = await sut.ReceiveUntilPerfectMatch(new byte[] { 0x01, 0x02 }, Token());
-
-        result.ToArray().Should().Equal(0x01, 0x02);
-    }
-
-    // =========================================================================
-    // ReceiveUntilHeaderFooterMatch
-    // =========================================================================
 
     [Fact]
     public async Task ReceiveUntilHeaderFooterMatch_ReturnsBytesBeforeFooter()
@@ -163,10 +118,7 @@ public class TransceiverTests
         var sut = pipe.AsTransceiver();
         pipe.EnqueueRx(0xAA, 0x01, 0x02, 0xBB);
 
-        var result = await sut.ReceiveUntilHeaderFooterMatch(
-            new byte[] { 0xAA },
-            new byte[] { 0xBB },
-            Token());
+        var result = await sut.Receive(Frame.Between(new byte[] { 0xAA }, new byte[] { 0xBB }), Token());
 
         result.ToArray().Should().Equal(0x01, 0x02);
     }
@@ -178,10 +130,7 @@ public class TransceiverTests
         var sut = pipe.AsTransceiver();
         pipe.EnqueueRx(0x00, 0x00, 0xAA, 0x05, 0x06, 0xBB);
 
-        var result = await sut.ReceiveUntilHeaderFooterMatch(
-            new byte[] { 0xAA },
-            new byte[] { 0xBB },
-            Token());
+        var result = await sut.Receive(Frame.Between(new byte[] { 0xAA }, new byte[] { 0xBB }), Token());
 
         result.ToArray().Should().Equal(0x05, 0x06);
     }
@@ -193,10 +142,7 @@ public class TransceiverTests
         var sut = pipe.AsTransceiver();
         pipe.EnqueueRx(0xAA, 0x07, 0x08, 0xBB);
 
-        var result = await sut.ReceiveUntilHeaderFooterMatch(
-            new byte[] { 0xAA },
-            new byte[] { 0xBB },
-            Token());
+        var result = await sut.Receive(Frame.Between(new byte[] { 0xAA }, new byte[] { 0xBB }), Token());
 
         result.ToArray().Should().NotContain(0xAA);
         result.ToArray().Should().NotContain(0xBB);
@@ -213,7 +159,7 @@ public class TransceiverTests
         var sut = pipe.AsTransceiver();
         pipe.EnqueueRx(0x11, 0x22, 0x33);
 
-        var result = await sut.SendReceiveExactly(new byte[] { 0xAA, 0xBB }, 3, Token());
+        var result = await sut.SendReceive(new byte[] { 0xAA, 0xBB }, Frame.Exactly(3), Token());
 
         pipe.SentBytes.Should().Equal(0xAA, 0xBB);
         result.ToArray().Should().Equal(0x11, 0x22, 0x33);
@@ -241,52 +187,13 @@ public class TransceiverTests
     // =========================================================================
 
     [Fact]
-    public async Task SendReceiveString_StringTerminator_TransmitsStringAndReturnsPayload()
-    {
-        var pipe = new FakeDuplexPipe();
-        var sut = pipe.AsTransceiver();
-        pipe.EnqueueRx((byte)'H', (byte)'E', (byte)'L', (byte)'L', (byte)'O', (byte)'\r', (byte)'\n');
-
-        var result = await sut.SendReceiveString("QUERY\r\n", "\r\n", Token());
-
-        result.Should().Be("HELLO");
-    }
-
-    // =========================================================================
-    // SendReceivePerfectMatch
-    // =========================================================================
-
-    [Fact]
-    public async Task SendReceivePerfectMatch_TransmitsBytesAndReturnsMatchedPayload()
-    {
-        var pipe = new FakeDuplexPipe();
-        var sut = pipe.AsTransceiver();
-        pipe.EnqueueRx(0x01, 0x02, 0x03);
-
-        var result = await sut.SendReceivePerfectMatch(
-            new byte[] { 0xAA },
-            new byte[] { 0x01, 0x02, 0x03 },
-            Token());
-
-        pipe.SentBytes.Should().Equal(0xAA);
-        result.ToArray().Should().Equal(0x01, 0x02, 0x03);
-    }
-
-    // =========================================================================
-    // SendReceiveFooter
-    // =========================================================================
-
-    [Fact]
     public async Task SendReceiveFooter_TransmitsBytesAndReturnsPayloadBeforeFooter()
     {
         var pipe = new FakeDuplexPipe();
         var sut = pipe.AsTransceiver();
         pipe.EnqueueRx(0x01, 0x02, 0xFF, 0xFE);
 
-        var result = await sut.SendReceiveFooter(
-            new byte[] { 0xAA },
-            new byte[] { 0xFF, 0xFE },
-            Token());
+        var result = await sut.SendReceive(new byte[] { 0xAA }, Frame.UntilPattern(new byte[] { 0xFF, 0xFE }), Token());
 
         pipe.SentBytes.Should().Equal(0xAA);
         result.ToArray().Should().Equal(0x01, 0x02);
@@ -306,9 +213,12 @@ public class TransceiverTests
         // Complete when 5 bytes have accumulated; skip the first 2, take the last 3.
         var result = await sut.SendReceive(
             new byte[] { 0xAA },
-            readBytes => readBytes.Length >= 5
-                ? FrameDetectionResult.Complete(2, 3)
-                : FrameDetectionResult.Incomplete,
+            Frame.OverSpan((received, _, _, payload) =>
+            {
+                if (received.Length < 5) return FrameDecodeResult.NeedMoreData;
+                payload.Write(received.Slice(2, 3));
+                return FrameDecodeResult.Frame(5);
+            }),
             Token());
 
         result.ToArray().Should().Equal(0x03, 0x04, 0x05);
@@ -325,11 +235,7 @@ public class TransceiverTests
         var sut = pipe.AsTransceiver();
         pipe.EnqueueRx(0xAA, 0x07, 0x08, 0xBB);
 
-        var result = await sut.SendReceiveHeaderFooter(
-            new byte[] { 0xFF },
-            new byte[] { 0xAA },
-            new byte[] { 0xBB },
-            Token());
+        var result = await sut.SendReceive(new byte[] { 0xFF }, Frame.Between(new byte[] { 0xAA }, new byte[] { 0xBB }), Token());
 
         pipe.SentBytes.Should().Equal(0xFF);
         result.ToArray().Should().Equal(0x07, 0x08);
@@ -350,8 +256,8 @@ public class TransceiverTests
         pipe.EnqueueRx((byte)'O', (byte)'K', (byte)'\n');
         pipe.EnqueueRx((byte)'1', (byte)'2', (byte)'\n');
 
-        var first = await sut.ReceiveUntilTerminator('\n', Token());
-        var second = await sut.ReceiveUntilTerminator('\n', Token());
+        var first = await sut.Receive(Frame.UntilTerminator((byte)'\n'), Token());
+        var second = await sut.Receive(Frame.UntilTerminator((byte)'\n'), Token());
 
         first.ToArray().Should().Equal((byte)'O', (byte)'K');
         second.ToArray().Should().Equal((byte)'1', (byte)'2');
@@ -368,8 +274,8 @@ public class TransceiverTests
         pipe.EnqueueRx((byte)'O', (byte)'K', (byte)'\n');
         pipe.EnqueueRx(0x04, 0x13);
 
-        _ = await sut.ReceiveUntilTerminator('\n', Token());
-        var second = await sut.ReceiveExactly(2, Token());
+        _ = await sut.Receive(Frame.UntilTerminator((byte)'\n'), Token());
+        var second = await sut.Receive(Frame.Exactly(2), Token());
 
         second.ToArray().Should().Equal(0x04, 0x13);
     }
@@ -383,8 +289,8 @@ public class TransceiverTests
         pipe.EnqueueRx(0x01, 0x02, 0xFF, 0xFE);
         pipe.EnqueueRx(0x03, 0x04, 0xFF, 0xFE);
 
-        var first = await sut.ReceiveUntilTerminatorPattern(new byte[] { 0xFF, 0xFE }, Token());
-        var second = await sut.ReceiveUntilTerminatorPattern(new byte[] { 0xFF, 0xFE }, Token());
+        var first = await sut.Receive(Frame.UntilPattern(new byte[] { 0xFF, 0xFE }), Token());
+        var second = await sut.Receive(Frame.UntilPattern(new byte[] { 0xFF, 0xFE }), Token());
 
         first.ToArray().Should().Equal(0x01, 0x02);
         second.ToArray().Should().Equal(0x03, 0x04);
@@ -399,8 +305,8 @@ public class TransceiverTests
         pipe.EnqueueRx((byte)'O', (byte)'K', (byte)'\r', (byte)'\n');
         pipe.EnqueueRx(0x04, 0x13);
 
-        _ = await sut.ReceiveUntilTerminatorPattern(new byte[] { (byte)'\r', (byte)'\n' }, Token());
-        var second = await sut.ReceiveExactly(2, Token());
+        _ = await sut.Receive(Frame.UntilPattern(new byte[] { (byte)'\r', (byte)'\n' }), Token());
+        var second = await sut.Receive(Frame.Exactly(2), Token());
 
         second.ToArray().Should().Equal(0x04, 0x13);
     }
@@ -414,10 +320,10 @@ public class TransceiverTests
         pipe.EnqueueRx(0xAA, 0x01, 0x02, 0xBB);
         pipe.EnqueueRx(0xAA, 0x03, 0x04, 0xBB);
 
-        var first = await sut.ReceiveUntilHeaderFooterMatch(
-            new byte[] { 0xAA }, new byte[] { 0xBB }, Token());
-        var second = await sut.ReceiveUntilHeaderFooterMatch(
-            new byte[] { 0xAA }, new byte[] { 0xBB }, Token());
+        var first = await sut.Receive(
+            Frame.Between(new byte[] { 0xAA }, new byte[] { 0xBB }), Token());
+        var second = await sut.Receive(
+            Frame.Between(new byte[] { 0xAA }, new byte[] { 0xBB }), Token());
 
         first.ToArray().Should().Equal(0x01, 0x02);
         second.ToArray().Should().Equal(0x03, 0x04);
@@ -432,9 +338,9 @@ public class TransceiverTests
         pipe.EnqueueRx(0xAA, 0xAA, 0x01, 0x02, 0xBB, 0xBB);
         pipe.EnqueueRx(0x04, 0x13);
 
-        var first = await sut.ReceiveUntilHeaderFooterMatch(
-            new byte[] { 0xAA, 0xAA }, new byte[] { 0xBB, 0xBB }, Token());
-        var second = await sut.ReceiveExactly(2, Token());
+        var first = await sut.Receive(
+            Frame.Between(new byte[] { 0xAA, 0xAA }, new byte[] { 0xBB, 0xBB }), Token());
+        var second = await sut.Receive(Frame.Exactly(2), Token());
 
         first.ToArray().Should().Equal(0x01, 0x02);
         second.ToArray().Should().Equal(0x04, 0x13);
@@ -453,69 +359,11 @@ public class TransceiverTests
         pipe.EnqueueRx(0x00, 0x00, 0xAA, 0xAA, 0x01, 0x02, 0xBB, 0xBB);
         pipe.EnqueueRx(0x04, 0x13);
 
-        var first = await sut.ReceiveUntilHeaderFooterMatch(
-            new byte[] { 0xAA, 0xAA }, new byte[] { 0xBB, 0xBB }, Token());
-        var second = await sut.ReceiveExactly(2, Token());
+        var first = await sut.Receive(
+            Frame.Between(new byte[] { 0xAA, 0xAA }, new byte[] { 0xBB, 0xBB }), Token());
+        var second = await sut.Receive(Frame.Exactly(2), Token());
 
         first.ToArray().Should().Equal(0x01, 0x02);
-        second.ToArray().Should().Equal(0x04, 0x13);
-    }
-
-    [Fact]
-    public async Task ReceiveUntilHeaderFooterMatch_ThenPerfectMatch_StaleFooterDoesNotSatisfyTheNextCommand()
-    {
-        var pipe = new FakeDuplexPipe();
-        var sut = pipe.AsTransceiver();
-
-        // The AN3155 shape from the issue: a header/footer framed reply bracketed by
-        // ACK (0x79), followed by a command whose reply is a bare ACK. A leftover
-        // trailing ACK would answer the second command before the device replied.
-        pipe.EnqueueRx(0x79, 0x01, 0x02, 0x79);
-
-        var info = await sut.ReceiveUntilHeaderFooterMatch(
-            new byte[] { 0x79 }, new byte[] { 0x79 }, Token());
-        info.ToArray().Should().Equal(0x01, 0x02);
-
-        var pending = sut.ReceiveUntilPerfectMatch(new byte[] { 0x79 }, Token(1000));
-        pending.IsCompleted.Should().BeFalse("the trailing ACK was consumed by the first frame");
-
-        pipe.EnqueueRx(0x79);
-        (await pending).ToArray().Should().Equal(0x79);
-    }
-
-    // =========================================================================
-    // ReceiveUntilPerfectMatch / ReceiveExactly consumption — these already
-    // advanced past what they matched; confirm that has not regressed.
-    // =========================================================================
-
-    [Fact]
-    public async Task ReceiveUntilPerfectMatch_MatchIsConsumed_NextReceiveStartsAfterIt()
-    {
-        var pipe = new FakeDuplexPipe();
-        var sut = pipe.AsTransceiver();
-
-        pipe.EnqueueRx(0x79);
-        pipe.EnqueueRx(0x04, 0x13);
-
-        var first = await sut.ReceiveUntilPerfectMatch(new byte[] { 0x79 }, Token());
-        var second = await sut.ReceiveExactly(2, Token());
-
-        first.ToArray().Should().Equal(0x79);
-        second.ToArray().Should().Equal(0x04, 0x13);
-    }
-
-    [Fact]
-    public async Task ReceiveUntilPerfectMatch_LeadingBytesBeforeMatchAreAlsoConsumed()
-    {
-        var pipe = new FakeDuplexPipe();
-        var sut = pipe.AsTransceiver();
-
-        pipe.EnqueueRx(0x00, 0x00, 0x79);
-        pipe.EnqueueRx(0x04, 0x13);
-
-        _ = await sut.ReceiveUntilPerfectMatch(new byte[] { 0x79 }, Token());
-        var second = await sut.ReceiveExactly(2, Token());
-
         second.ToArray().Should().Equal(0x04, 0x13);
     }
 
@@ -527,201 +375,140 @@ public class TransceiverTests
 
         pipe.EnqueueRx(0x01, 0x02, 0x03, 0x04, 0x05);
 
-        var first = await sut.ReceiveExactly(2, Token());
-        var second = await sut.ReceiveExactly(3, Token());
+        var first = await sut.Receive(Frame.Exactly(2), Token());
+        var second = await sut.Receive(Frame.Exactly(3), Token());
 
         first.ToArray().Should().Equal(0x01, 0x02);
         second.ToArray().Should().Equal(0x03, 0x04, 0x05);
     }
 
     // =========================================================================
-    // FrameDetectionResult.ConsumedLength
+    // FrameDecodeResult
     // =========================================================================
 
     [Fact]
-    public void FrameDetectionResult_CompleteWithoutConsumedLength_ConsumesToEndOfPayload()
+    public void FrameDecodeResult_NeedMoreData_ConsumesNothing()
     {
-        var result = FrameDetectionResult.Complete(2, 3);
+        var result = FrameDecodeResult.NeedMoreData;
 
-        result.IsComplete.Should().BeTrue();
-        result.PayloadOffset.Should().Be(2);
-        result.PayloadLength.Should().Be(3);
+        result.Status.Should().Be(FrameDecodeStatus.NeedMoreData);
+        result.ConsumedLength.Should().Be(0);
+    }
+
+    [Fact]
+    public void FrameDecodeResult_Frame_CarriesOnlyTheConsumedExtent()
+    {
+        // The payload is written out rather than described, so a frame result has one
+        // number where the old detection result had three.
+        var result = FrameDecodeResult.Frame(5);
+
+        result.Status.Should().Be(FrameDecodeStatus.Frame);
         result.ConsumedLength.Should().Be(5);
     }
 
     [Fact]
-    public void FrameDetectionResult_CompleteWithConsumedLength_KeepsPayloadAndFrameSeparate()
+    public void FrameDecodeResult_ZeroLengthFrame_IsAccepted()
     {
-        var result = FrameDetectionResult.Complete(0, 2, 4);
+        var result = FrameDecodeResult.Frame(0);
 
-        result.PayloadOffset.Should().Be(0);
-        result.PayloadLength.Should().Be(2);
+        result.Status.Should().Be(FrameDecodeStatus.Frame);
+        result.ConsumedLength.Should().Be(0);
+    }
+
+    [Fact]
+    public void FrameDecodeResult_Discard_CarriesTheBytesToDrop()
+    {
+        var result = FrameDecodeResult.Discard(3);
+
+        result.Status.Should().Be(FrameDecodeStatus.Discard);
+        result.ConsumedLength.Should().Be(3);
+    }
+
+    [Fact]
+    public void FrameDecodeResult_Invalid_CarriesAReason()
+    {
+        var result = FrameDecodeResult.Invalid(4, "bad checksum");
+
+        result.Status.Should().Be(FrameDecodeStatus.Invalid);
         result.ConsumedLength.Should().Be(4);
-    }
-
-    [Fact]
-    public void FrameDetectionResult_ConsumedLengthShorterThanPayload_Throws()
-    {
-        var act = () => FrameDetectionResult.Complete(2, 3, 4);
-
-        act.Should().Throw<ArgumentOutOfRangeException>()
-            .WithParameterName("consumedLength");
+        result.Reason.Should().Be("bad checksum");
     }
 
     [Theory]
-    [InlineData(-1, 1, "payloadOffset")]
-    [InlineData(1, -1, "payloadLength")]
-    public void FrameDetectionResult_NegativeOffsetOrLength_ThreeArgOverloadThrows(
-        int payloadOffset, int payloadLength, string parameterName)
+    [InlineData(-1)]
+    [InlineData(int.MinValue)]
+    public void FrameDecodeResult_NegativeConsumedLength_Throws(int consumedLength)
     {
-        var act = () => FrameDetectionResult.Complete(payloadOffset, payloadLength, 10);
+        var frame = () => FrameDecodeResult.Frame(consumedLength);
+        var discard = () => FrameDecodeResult.Discard(consumedLength);
+        var invalid = () => FrameDecodeResult.Invalid(consumedLength, "reason");
 
-        act.Should().Throw<ArgumentOutOfRangeException>()
-            .WithParameterName(parameterName);
-    }
-
-    [Theory]
-    [InlineData(-1, 1, "payloadOffset")]
-    [InlineData(1, -1, "payloadLength")]
-    [InlineData(int.MinValue, -1, "payloadOffset")]
-    public void FrameDetectionResult_NegativeOffsetOrLength_TwoArgOverloadThrows(
-        int payloadOffset, int payloadLength, string parameterName)
-    {
-        // Both factories reject the same payload bounds, so the public type cannot
-        // represent a frame that does not address the buffer.
-        var act = () => FrameDetectionResult.Complete(payloadOffset, payloadLength);
-
-        act.Should().Throw<ArgumentOutOfRangeException>()
-            .WithParameterName(parameterName);
+        frame.Should().Throw<ArgumentOutOfRangeException>().WithParameterName("consumedLength");
+        discard.Should().Throw<ArgumentOutOfRangeException>().WithParameterName("consumedLength");
+        invalid.Should().Throw<ArgumentOutOfRangeException>().WithParameterName("consumedLength");
     }
 
     [Fact]
-    public void FrameDetectionResult_PayloadExtentOverflows_TwoArgOverloadThrows()
+    public void FrameDecodeResult_InvalidWithoutAReason_Throws()
     {
-        // int arithmetic would wrap to a negative consumed length here.
-        var act = () => FrameDetectionResult.Complete(int.MaxValue, 1);
+        // An invalid frame becomes an exception message, so it has to say something.
+        var act = () => FrameDecodeResult.Invalid(4, "");
 
-        act.Should().Throw<ArgumentOutOfRangeException>()
-            .WithParameterName("payloadLength");
-    }
-
-    [Fact]
-    public void FrameDetectionResult_PayloadExtentOverflows_ThreeArgOverloadThrows()
-    {
-        // A wrapped sum would let this consumed length pass the "not shorter than the
-        // payload" check.
-        var act = () => FrameDetectionResult.Complete(int.MaxValue, 1, 0);
-
-        act.Should().Throw<ArgumentOutOfRangeException>()
-            .WithParameterName("payloadLength");
-    }
-
-    [Fact]
-    public void FrameDetectionResult_PayloadExtentAtIntMaxValue_IsAccepted()
-    {
-        var result = FrameDetectionResult.Complete(int.MaxValue - 1, 1);
-
-        result.ConsumedLength.Should().Be(int.MaxValue);
-    }
-
-    [Fact]
-    public void FrameDetectionResult_ZeroLengthPayloadWithConsumedFrame_IsAccepted()
-    {
-        var result = FrameDetectionResult.Complete(0, 0, 2);
-
-        result.PayloadLength.Should().Be(0);
-        result.ConsumedLength.Should().Be(2);
-    }
-
-    [Fact]
-    public async Task ReceiveUntilTerminator_EmptyPayload_StillConsumesTheTerminator()
-    {
-        var pipe = new FakeDuplexPipe();
-        var sut = pipe.AsTransceiver();
-
-        // The terminator is the very first byte: a zero-length frame that must still
-        // move the reader past it.
-        pipe.EnqueueRx((byte)'\n');
-        pipe.EnqueueRx(0x04, 0x13);
-
-        var first = await sut.ReceiveUntilTerminator('\n', Token());
-        var second = await sut.ReceiveExactly(2, Token());
-
-        first.ToArray().Should().BeEmpty();
-        second.ToArray().Should().Equal(0x04, 0x13);
-    }
-
-    [Fact]
-    public async Task ReceiveMessage_CustomDetectorConsumingPastPayload_DiscardsTheTrailingBytes()
-    {
-        var pipe = new FakeDuplexPipe();
-        var sut = pipe.AsTransceiver();
-
-        pipe.EnqueueRx(0x01, 0x02, 0x03, 0xDE, 0xAD);
-        pipe.EnqueueRx(0x04, 0x13);
-
-        // Payload is the first three bytes; the two-byte checksum after it is part of
-        // the frame but not of the payload.
-        var first = await sut.ReceiveMessage(
-            readBytes => readBytes.Length >= 5
-                ? FrameDetectionResult.Complete(0, 3, 5)
-                : FrameDetectionResult.Incomplete,
-            Token());
-        var second = await sut.ReceiveExactly(2, Token());
-
-        first.ToArray().Should().Equal(0x01, 0x02, 0x03);
-        second.ToArray().Should().Equal(0x04, 0x13);
+        act.Should().Throw<ArgumentException>().WithParameterName("reason");
     }
 
     // =========================================================================
-    // Detector results that do not fit the buffer
+    // Decoder results that do not fit the buffer
     // =========================================================================
 
     [Fact]
-    public async Task ReceiveMessage_DetectorConsumesPastBufferEnd_ThrowsAndLeavesThePipeIntact()
+    public async Task Receive_DecoderConsumesPastBufferEnd_ThrowsAndLeavesThePipeIntact()
     {
         var pipe = new FakeDuplexPipe();
         var sut = pipe.AsTransceiver();
 
         pipe.EnqueueRx(0x01, 0x02, 0x03);
 
-        var act = async () => await sut.ReceiveMessage(
-            readBytes => readBytes.Length >= 3
-                ? FrameDetectionResult.Complete(0, 3, 99)
-                : FrameDetectionResult.Incomplete,
+        var act = async () => await sut.Receive(
+            Frame.OverSpan((received, _, _, payload) =>
+            {
+                if (received.Length < 3) return FrameDecodeResult.NeedMoreData;
+                payload.Write(received);
+                return FrameDecodeResult.Frame(99);
+            }),
             Token());
 
         await act.Should().ThrowAsync<ArgumentException>()
-            .WithParameterName("detectMessage");
+            .WithParameterName("decoder");
 
         // Nothing was consumed, so the same bytes are still there for the next receive.
-        var recovered = await sut.ReceiveExactly(3, Token());
+        var recovered = await sut.Receive(Frame.Exactly(3), Token());
         recovered.ToArray().Should().Equal(0x01, 0x02, 0x03);
     }
 
     [Fact]
-    public async Task ReceiveMessage_DetectorPayloadPastBufferEnd_ThrowsAndLeavesThePipeIntact()
+    public async Task Receive_DecoderDiscardsPastBufferEnd_ThrowsAndLeavesThePipeIntact()
     {
         var pipe = new FakeDuplexPipe();
         var sut = pipe.AsTransceiver();
 
         pipe.EnqueueRx(0x01, 0x02, 0x03);
 
-        var act = async () => await sut.ReceiveMessage(
-            readBytes => readBytes.Length >= 3
-                ? FrameDetectionResult.Complete(2, 10)
-                : FrameDetectionResult.Incomplete,
+        var act = async () => await sut.Receive(
+            Frame.OverSpan((received, _, _, _) => received.Length >= 3
+                ? FrameDecodeResult.Discard(10)
+                : FrameDecodeResult.NeedMoreData),
             Token());
 
         await act.Should().ThrowAsync<ArgumentException>()
-            .WithParameterName("detectMessage");
+            .WithParameterName("decoder");
 
-        var recovered = await sut.ReceiveExactly(3, Token());
+        var recovered = await sut.Receive(Frame.Exactly(3), Token());
         recovered.ToArray().Should().Equal(0x01, 0x02, 0x03);
     }
 
     [Fact]
-    public async Task ReceiveMessage_DetectorConsumesTheWholeBuffer_IsAccepted()
+    public async Task Receive_DecoderConsumesTheWholeBuffer_IsAccepted()
     {
         var pipe = new FakeDuplexPipe();
         var sut = pipe.AsTransceiver();
@@ -729,10 +516,13 @@ public class TransceiverTests
         pipe.EnqueueRx(0x01, 0x02, 0x03);
 
         // Consuming exactly to buffer.End is the boundary, not an overrun.
-        var result = await sut.ReceiveMessage(
-            readBytes => readBytes.Length >= 3
-                ? FrameDetectionResult.Complete(0, 1, 3)
-                : FrameDetectionResult.Incomplete,
+        var result = await sut.Receive(
+            Frame.OverSpan((received, _, _, payload) =>
+            {
+                if (received.Length < 3) return FrameDecodeResult.NeedMoreData;
+                payload.Write(received.Slice(0, 1));
+                return FrameDecodeResult.Frame(3);
+            }),
             Token());
 
         result.ToArray().Should().Equal(0x01);
@@ -749,7 +539,7 @@ public class TransceiverTests
         var sut = pipe.AsTransceiver();
         pipe.EnqueueRx(0x01, 0x02, 0x03);
 
-        var result = await sut.ReceiveUntilIdle(TimeSpan.FromMilliseconds(100), Token());
+        var result = await sut.Receive(Frame.UntilIdle(TimeSpan.FromMilliseconds(100)), Token());
 
         result.ToArray().Should().Equal(0x01, 0x02, 0x03);
     }
@@ -767,7 +557,7 @@ public class TransceiverTests
             pipe.EnqueueRx(0x04, 0x05, 0x06);
         });
 
-        var result = await sut.ReceiveUntilIdle(TimeSpan.FromMilliseconds(200), Token());
+        var result = await sut.Receive(Frame.UntilIdle(TimeSpan.FromMilliseconds(200)), Token());
 
         result.ToArray().Should().Equal(0x01, 0x02, 0x03, 0x04, 0x05, 0x06);
     }
@@ -788,7 +578,7 @@ public class TransceiverTests
             pipe.EnqueueRx(0xCC, 0xDD);
         });
 
-        var result = await sut.ReceiveUntilIdle(TimeSpan.FromMilliseconds(100), Token());
+        var result = await sut.Receive(Frame.UntilIdle(TimeSpan.FromMilliseconds(100)), Token());
 
         result.ToArray().Should().Equal(0xAA, 0xBB, 0xCC, 0xDD);
     }
@@ -810,7 +600,7 @@ public class TransceiverTests
             }
         });
 
-        var result = await sut.ReceiveUntilIdle(TimeSpan.FromMilliseconds(200), Token());
+        var result = await sut.Receive(Frame.UntilIdle(TimeSpan.FromMilliseconds(200)), Token());
 
         result.ToArray().Should().Equal(0x01, 0x02, 0x03, 0x04, 0x05);
     }
@@ -824,7 +614,7 @@ public class TransceiverTests
         // The idle timeout fires repeatedly but with zero bytes accumulated the
         // method must re-enter the loop; only the outer token should stop it.
         using var cts = new CancellationTokenSource(150);
-        var act = async () => await sut.ReceiveUntilIdle(TimeSpan.FromMilliseconds(50), cts.Token);
+        var act = async () => await sut.Receive(Frame.UntilIdle(TimeSpan.FromMilliseconds(50)), cts.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
@@ -836,7 +626,7 @@ public class TransceiverTests
         var sut = pipe.AsTransceiver();
 
         using var cts = new CancellationTokenSource(100);
-        var act = async () => await sut.ReceiveUntilIdle(TimeSpan.FromSeconds(30), cts.Token);
+        var act = async () => await sut.Receive(Frame.UntilIdle(TimeSpan.FromSeconds(30)), cts.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
     }

@@ -1,4 +1,5 @@
-using CallAndResponse;
+﻿using CallAndResponse;
+using CallAndResponse.Framing;
 using CallAndResponse.Transport.BleNordicUart;
 using Plugin.BLE;
 using Plugin.BLE.Abstractions.Contracts;
@@ -75,9 +76,9 @@ var transceiver = new Transceiver(pipe);
 using var cts = new CancellationTokenSource(5000);
 try
 {
-    var response = await transceiver.SendReceiveExactly(
+    var response = await transceiver.SendReceive(
         new byte[] { 0x01, 0x02, 0x03 },
-        numBytesExpected: 3,
+        Frame.Exactly(3),
         cts.Token
     );
 

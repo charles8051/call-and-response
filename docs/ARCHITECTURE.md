@@ -11,15 +11,20 @@ The library is **pure framing and protocol logic**. It never opens, closes, conn
 or disconnects anything. It receives an already-active `IDuplexPipe` and provides
 structured message exchange on top of it.
 
-The design has two axes:
+The design has three axes:
 
 | Axis | Concern | Examples |
 |---|---|---|
 | **Transport** | Adapt an active connection to `IDuplexPipe` | Serial port, BLE Nordic UART |
+| **Framing** | Decide where a frame ends, and turn wire bytes into a payload and back | Fixed length, terminator, idle gap, SLIP, RFC 1662 async HDLC |
 | **Protocol** | Build request frames, parse response frames, enforce protocol rules | Modbus RTU, STM32 bootloader |
 
-A protocol implementation takes an `ITransceiver` and uses its `SendReceive*`
-convenience methods without knowing or caring which transport is underneath.
+Framing is the axis [ADR-0020](adr/adr-0020-framing-codec-abstraction.md) added. Before it, framing was
+a receive-only concern expressed as offsets into the received bytes, which could not describe a payload
+that is not a contiguous slice of the wire and had nowhere to put an escape or a checksum on the way out.
+
+A protocol implementation takes an `ITransceiver` or an `IMessageTransceiver` and never knows which
+transport is underneath.
 
 ---
 
@@ -34,29 +39,42 @@ convenience methods without knowing or caring which transport is underneath.
 │   port.Open();                                       │
 │                                                      │
 │   await using var pipe = new SerialDuplexPipe(port); │
-│   var transceiver = new Transceiver(pipe);           │
-│   var modbus = new ModbusRtuClient(transceiver);     │
-│   var regs   = await modbus.ReadHoldingRegisters(…); │
+│   var link    = pipe.AsTransceiver();                │
+│   var channel = ModbusRtu.Channel(link, 115200);     │
+│   var modbus  = new ModbusRtuClient(channel);        │
+│   var regs    = await modbus.ReadHoldingRegisters(…);│
 └──────────────────┬───────────────────────────────────┘
-                   │ uses ITransceiver / IModbusClient
+                   │ uses ITransceiver / IMessageTransceiver
 ┌──────────────────▼───────────────────────────────────┐
 │              Protocol Layer (optional)               │
 │                                                      │
 │   CallAndResponse.Protocol.Modbus                    │
 │   CallAndResponse.Protocol.Stm32Bootloader           │
 │                                                      │
-│   Builds frames, validates responses, computes CRC.  │
-│   Delegates all I/O to ITransceiver.                 │
+│   Builds request payloads, validates responses.      │
+│   Delegates all I/O to the channel it was given.     │
 └──────────────────┬───────────────────────────────────┘
-                   │ calls Send, ReceiveMessage, ReceiveUntilIdle
+                   │ Send / Receive(decoder), or SendMessage / ReceiveMessage
 ┌──────────────────▼───────────────────────────────────┐
 │                 Core Abstraction                     │
 │                                                      │
-│   ITransceiver ──── pure communication contract      │
+│   ITransceiver ──────── byte channel, caller-framed  │
+│   IMessageTransceiver ─ message channel, link-framed │
+│                                                      │
 │   Transceiver (sealed) ── IDuplexPipe composition    │
-│       └─ framed message accumulation                 │
-│   TransceiverExtensions ── SendReceive* / Receive*   │
-│   AsTransceiver() ── composition entry point         │
+│   MessageTransceiver ──── binds a codec to a link    │
+│   ByteStreamAdapter ───── the other direction        │
+└──────────────────┬───────────────────────────────────┘
+                   │ IFrameDecoder / IFrameCodec
+┌──────────────────▼───────────────────────────────────┐
+│                   Framing Layer                      │
+│                                                      │
+│   Frame.Exactly / UntilTerminator / UntilPattern /   │
+│   Between / UntilIdle / LengthPrefixed / Custom      │
+│     └─ plus WithIdleTimeout, WithMaxLength, Validated│
+│                                                      │
+│   SlipCodec (RFC 1055), HdlcCodec (RFC 1662)         │
+│   ModbusRtu.Codec — CRC-16 and the inter-frame gap   │
 └──────────────────┬───────────────────────────────────┘
                    │ implements IDuplexPipe
 ┌──────────────────▼───────────────────────────────────┐
@@ -75,6 +93,9 @@ Dependencies flow **downward only**. Protocol packages reference the core
 package. Transport packages also reference only the core package. The
 application wires them together.
 
+The framing layer lives inside the core package rather than beside it: a decoder is a value, not a
+dependency, and the codecs add nothing to the dependency graph.
+
 `System.IO.Pipelines` is the seam. Any transport you can express as a
 `PipeReader` / `PipeWriter` pair works without a dedicated package: a
 `NetworkStream`, a `NamedPipeClientStream`, or a plain `Stream` via
@@ -86,10 +107,10 @@ application wires them together.
 
 | Package | TFM | Dependencies | Purpose |
 |---|---|---|---|
-| `CallAndResponse` | net8.0 | Microsoft.Extensions.Logging.Abstractions, System.IO.Pipelines, System.Diagnostics.DiagnosticSource | Core abstraction: `ITransceiver`, `Transceiver`, `FrameDetectionResult`, exceptions |
+| `CallAndResponse` | net8.0 | Microsoft.Extensions.Logging.Abstractions, System.IO.Pipelines, System.Diagnostics.DiagnosticSource | Core abstraction: `ITransceiver`, `IMessageTransceiver`, `Transceiver`, the `Frame` decoder catalogue, `SlipCodec`, `HdlcCodec`, exceptions |
 | `CallAndResponse.Transport.Serial` | net8.0 | Core, RJCP.SerialPortStream | Serial port duplex pipe |
 | `CallAndResponse.Transport.BleNordicUart` | net8.0 | Core, Plugin.BLE | BLE Nordic UART Service duplex pipe |
-| `CallAndResponse.Protocol.Modbus` | net8.0 | Core | Modbus RTU client (FC03, FC16) |
+| `CallAndResponse.Protocol.Modbus` | net8.0 | Core | Modbus RTU codec and client (FC03, FC16) |
 | `CallAndResponse.Protocol.Stm32Bootloader` | net8.0 | Core | STM32 system bootloader command set |
 
 `CallAndResponse`, `CallAndResponse.Transport.Serial`, `CallAndResponse.Protocol.Modbus`, and
@@ -101,47 +122,60 @@ the nearest `v*` tag. `.github/workflows/publish.yml` publishes them to nuget.or
 
 ## Core Abstraction
 
+Two contracts, split on where the frame boundary is decided. A protocol that knows its own reply
+shapes takes the byte channel; one running over a self-delimiting link takes the message channel.
+
 ### `ITransceiver`
 
-The central protocol-facing contract. Every protocol client consumes it; it carries
-only send/receive operations. It has no lifecycle members — no `Open`, no `Close`,
-no `IsOpen`. See [ADR-0011](adr/adr-0011-remove-lifecycle-ownership-from-transceiver.md).
+A byte channel. Sends go out verbatim, and each receive is directed by the caller, who supplies the
+decoder that says where the frame ends. No lifecycle members — no `Open`, no `Close`, no `IsOpen`.
+See [ADR-0011](adr/adr-0011-remove-lifecycle-ownership-from-transceiver.md).
 
 ```
 ITransceiver
-├── Primitives
-│   ├── Send(ReadOnlyMemory<byte>, CancellationToken)
-│   ├── ReceiveMessage(Func<ReadOnlyMemory<byte>, FrameDetectionResult>, CancellationToken)
-│   └── ReceiveUntilIdle(TimeSpan idleTimeout, CancellationToken)
-│
-└── Convenience (extension methods in TransceiverExtensions)
-    ├── SendReceiveExactly(…, int numBytesExpected, …)
-    ├── SendReceiveFooter(…, ReadOnlyMemory<byte> footer, …)
-    ├── SendReceiveHeaderFooter(…, header, footer, …)
-    ├── SendReceivePerfectMatch(…, matchBytes, …)
-    ├── SendReceive(…, Func detectMessage, …)
-    ├── SendReceiveString(…, char terminator, …)
-    ├── SendReceiveString(…, string terminator, …)
-    ├── ReceiveExactly(int numBytesExpected, …)
-    ├── ReceiveUntilTerminator(char, …)
-    ├── ReceiveUntilTerminatorPattern(ReadOnlyMemory<byte>, …)
-    ├── ReceiveUntilPerfectMatch(ReadOnlyMemory<byte>, …)
-    └── ReceiveUntilHeaderFooterMatch(header, footer, …)
+├── Send(ReadOnlyMemory<byte>, CancellationToken)
+├── Receive(IFrameDecoder, CancellationToken)                      → Memory<byte>
+└── Receive(IFrameDecoder, IBufferWriter<byte>, CancellationToken) → writes in place
 ```
 
-Protocol clients (`ModbusRtuClient`, `Stm32BootloaderClient`) accept `ITransceiver`.
+### `IMessageTransceiver`
+
+A message channel. Framing is a property of the link and fixed for its lifetime, so the caller sends
+and receives payloads and never sees a delimiter, an escape, or a checksum.
+
+```
+IMessageTransceiver
+├── SendMessage(ReadOnlyMemory<byte>, CancellationToken)
+└── ReceiveMessage(CancellationToken) → Memory<byte>
+```
+
+A client written against this runs over SLIP, over RFC 1662, or over a plain terminator codec without
+modification, because it never expressed an opinion about byte boundaries.
+
+### Moving between them
+
+```csharp
+ITransceiver        link    = pipe.AsTransceiver();
+IMessageTransceiver channel = link.WithFraming(new SlipCodec());
+ITransceiver        again   = channel.AsByteStream();
+```
+
+`AsByteStream` is lossy in both directions and says so. Reads concatenate across message boundaries;
+each `Send` becomes exactly one message whether or not the caller meant one. It exists for a client
+written against `ITransceiver` that has to run over a framed link, and a client whose sends do not
+already align with message boundaries should move to `IMessageTransceiver` instead.
 
 ### `Transceiver`
 
-The single implementation, `sealed`. Two constructors:
+The `ITransceiver` implementation, `sealed`. Two constructors:
 
 ```csharp
 new Transceiver(IDuplexPipe pipe, ILogger<Transceiver>? logger = null)
 new Transceiver(PipeReader input, PipeWriter output, ILogger<Transceiver>? logger = null)
 ```
 
-The caller owns the pipe and everything under it. `Transceiver` never completes
-the reader or the writer.
+The caller owns the pipe and everything under it. `Transceiver` never completes the reader or the
+writer.
 
 ### `AsTransceiver()`
 
@@ -149,51 +183,95 @@ Extension method on `IDuplexPipe` (`DuplexPipeExtensions`) for the common case:
 
 ```csharp
 ITransceiver transceiver = myDuplexPipe.AsTransceiver();
-var client = new ModbusRtuClient(transceiver);
 ```
 
-### `FrameDetectionResult`
+### `IFrameDecoder`
 
-The value a detect function returns. `FrameDetectionResult.Incomplete` means keep
-reading; `FrameDetectionResult.Complete(payloadOffset, payloadLength)` marks the
-frame found and names the payload slice within the accumulated buffer.
+The framing strategy, injected as a value. A decoder answers where the frame ends and **produces**
+the payload, rather than describing where it sits in the received bytes. That is what makes SLIP and
+RFC 1662 expressible: their payloads are not contiguous slices of the wire.
 
-When the frame extends past the payload — a terminator, a footer, a trailing
-checksum — use `FrameDetectionResult.Complete(payloadOffset, payloadLength,
-consumedLength)`. The transceiver returns the payload slice but consumes
-`consumedLength` bytes, so the delimiter cannot satisfy the next receive. The
-two-argument overload consumes to the end of the payload. See
-[ADR-0017](adr/adr-0017-frame-consumed-length.md).
-
-### Message Detection Pattern
-
-The detect function is the key abstraction that makes the library flexible.
-Rather than baking framing logic into the transport, the *caller* decides when
-a complete message has arrived:
-
-```
-detectMessage(accumulatedBytes) → FrameDetectionResult
-    Complete(offset, length)            →  return bytes[offset..offset+length],
-                                           consume offset+length
-    Complete(offset, length, consumed)  →  return bytes[offset..offset+length],
-                                           consume `consumed`
-    Incomplete                          →  keep reading
+```csharp
+public interface IFrameDecoder
+{
+    TimeSpan? IdleTimeout { get; }
+    FrameDecodeResult Decode(in FrameContext context, IBufferWriter<byte> payload);
+}
 ```
 
-Built-in convenience methods provide detect functions for common patterns:
+`FrameContext` carries `Received` (a `ReadOnlySequence<byte>` starting at the first unconsumed byte),
+`IsIdle`, and `IsTransportComplete`. `FrameDecodeResult` carries a status and a consumed extent:
 
-| Method | Detection strategy | Consumes |
+| Status | Meaning | Loop does |
 |---|---|---|
-| `ReceiveExactly(n)` | `buffer.Length >= n` | the `n` bytes returned |
-| `ReceiveUntilTerminator(char)` | `IndexOf((byte)terminator)` | payload **and** the terminator |
-| `ReceiveUntilTerminatorPattern(bytes)` | `Span.IndexOf(pattern)` | payload **and** the pattern |
-| `ReceiveUntilPerfectMatch(bytes)` | `Span.IndexOf(matchBytes)` | everything through the match |
-| `ReceiveUntilHeaderFooterMatch(h, f)` | `IndexOf(header)` then `IndexOf(footer)` after header | everything through the footer |
-| `SendReceive(…, detectMessage)` | Caller-supplied function | whatever the detector reports |
+| `NeedMoreData` | No complete frame yet | Wait for more; consumes nothing |
+| `Frame` | Payload written to the writer | Deliver it, consume `ConsumedLength` |
+| `Discard` | Leading bytes belong to no frame | Drop them and decode again |
+| `Invalid` | A frame was found and is malformed | Consume it, then throw `FramingException` |
 
-`ReceiveUntilIdle` is the exception: it frames on silence rather than on content,
-for unsolicited or streaming data (barcode scanners, GPS NMEA sentences) where the
-gap between bytes is the frame boundary.
+Two rules the receive loop enforces rather than trusts:
+
+- **Output is transactional.** The decoder writes to a staging buffer the loop owns, and the caller
+  sees it only on `Frame`. `IBufferWriter<byte>` has no rewind, so a decoder that writes and then asks
+  for more data would otherwise duplicate, and one that writes and then rejects would leak.
+- **A decoder that throws does not wedge the link.** The loop advances the reader on the way out.
+  Before [ADR-0020](adr/adr-0020-framing-codec-abstraction.md) an exception from caller-supplied code
+  skipped every `AdvanceTo`, and `PipeReader` refused every later read for the rest of the session.
+
+`Decode` must be a pure function of its context. The loop re-invokes it on a buffer that grows but
+always starts at the same byte, so a decoder that carries a parse cursor between calls will mis-frame.
+
+### `IFrameCodec`
+
+`IFrameEncoder` adds the send half — delimiters, escapes, checksums — and `IFrameCodec` is both.
+A codec is what binds to a link to make a message channel, because a framing that transforms the
+payload has to transform it in both directions.
+
+### The `Frame` catalogue
+
+| Decoder | Frames on | Consumes |
+|---|---|---|
+| `Frame.Exactly(n)` | A byte count | The `n` bytes returned |
+| `Frame.UntilTerminator(b)` | A single delimiter byte | Payload **and** the delimiter |
+| `Frame.UntilPattern(bytes)` | A delimiter sequence | Payload **and** the pattern |
+| `Frame.Between(header, footer)` | A header, then the next footer | Everything through the footer |
+| `Frame.UntilIdle(gap)` | Silence on the line | Everything buffered |
+| `Frame.UntilTransportComplete()` | The transport closing | Everything buffered |
+| `Frame.LengthPrefixed(…)` | A length field | The whole frame it describes |
+| `Frame.Custom(…)` / `Frame.OverSpan(…)` | Whatever the caller writes | Whatever it reports |
+
+Combinators, which is the point of decoders being values:
+
+| Combinator | Effect |
+|---|---|
+| `.WithIdleTimeout(gap)` | Stop waiting once a reply stalls for the gap: ask the inner decoder once more as if the transport had closed, and fail if it still cannot finish |
+| `.WithMaxLength(n)` | Fail rather than accumulate forever when no frame arrives |
+| `.Validated(check)` | Reject a decoded payload — a CRC, a magic byte — before it reaches the caller |
+
+`Frame.UntilIdle(gap).Validated(crc)` is Modbus RTU's real framing rule, and was not expressible
+before [ADR-0020](adr/adr-0020-framing-codec-abstraction.md).
+
+Both measure the gap **between bytes**, so neither applies to a device that never answers at all —
+that is what the caller's cancellation token is for.
+
+`WithIdleTimeout` is a deadline rather than a framing rule, and the distinction matters. It never
+returns the buffered wire bytes in the inner decoder's place, because doing so would skip that
+decoder's unescaping, its checksum, and anything `Validated` wrapped around it — handing the caller
+undecoded bytes shaped like a payload. To frame on silence itself, use `Frame.UntilIdle`.
+
+### Framing codecs
+
+`SlipCodec` implements RFC 1055: `0xC0` delimits, `0xDB` escapes. It has no checksum and no error
+detection of any kind, so after a desynchronisation noise between two delimiters decodes into a
+payload that looks valid. An empty payload also does not survive the round trip — encoded it is two
+delimiters, which is what the RFC tells receivers to discard as inter-frame fill.
+
+`HdlcCodec` implements RFC 1662 asynchronous HDLC framing, and only the framing: LCP,
+authentication, and the NCPs are a link state machine and out of scope. `0x7E` delimits, `0x7D`
+escapes with a `0x20` XOR, the ACCM says which control octets to escape, and a CRC-16/X-25 FCS
+precedes the closing flag. The FCS lives inside the codec rather than in a stackable CRC layer
+because RFC 1662 computes it over the **unescaped** frame and then escapes it along with everything
+else — escaping and integrity interleave, so they cannot be layers.
 
 ---
 
@@ -260,10 +338,29 @@ var transceiver = new Transceiver(
 - **FC03** — Read Holding Registers
 - **FC16** — Write Multiple Registers
 
-Request frames are built with the internal `ModbusRtuRequestBuilder` (fluent
-builder pattern with CRC-16 computation via `ModbusUtils`). Response validation
-checks unit identifier, function code, and exception flags. Modbus exceptions
-are surfaced as `ModbusProtocolException` with a typed `ModbusProtocolExceptionCode`.
+```csharp
+var channel = ModbusRtu.Channel(pipe.AsTransceiver(), baudRate: 115200);
+var modbus  = new ModbusRtuClient(channel);
+```
+
+The client takes `ModbusRtuChannel`, not a bare `IMessageTransceiver`. It reads every reply as a
+CRC-checked, gap-delimited RTU frame, and any other channel would satisfy the interface while
+silently producing requests with no CRC and responses that were never validated. The type is what
+guarantees the framing.
+
+`ModbusRtu.Codec(gap)` owns both halves of RTU framing: it appends the CRC-16 on send, and on receive
+it frames on the 3.5-character inter-frame gap, validates the CRC, and strips it. `ModbusRtu.GapFor`
+derives that gap from the baud rate, which the application knows and the transceiver deliberately
+does not.
+
+Framing on the gap rather than on an expected response length is what lets a Modbus exception
+response be parsed at all — it is five bytes, shorter than any success response, so a length-based
+framing waits forever for bytes the device already finished sending.
+
+Request payloads are built with the internal `ModbusRtuRequestBuilder`, which no longer touches the
+CRC. Response validation checks unit identifier, function code, declared byte count, and the
+exception flag; exceptions are surfaced as `ModbusProtocolException` with a typed
+`ModbusProtocolExceptionCode`.
 
 ### STM32 Bootloader (`CallAndResponse.Protocol.Stm32Bootloader`)
 
@@ -271,7 +368,9 @@ are surfaced as `ModbusProtocolException` with a typed `ModbusProtocolExceptionC
 (AN3155) including:
 
 - `Ping` — Initial synchronization (0x7F → ACK/NACK)
-- `GetSupportedCommands` — Protocol version and command list
+- `GetSupportedCommands` — Protocol version and command list, framed by
+  `Frame.LengthPrefixed` after its opening ACK is read on its own so a NACK is
+  reported rather than left waiting for a byte count that never arrives
 - `GetId` — Chip ID
 - `ReadMemory` — Read flash/RAM in 256-byte pages
 - `WriteMemory` — Write flash/RAM in 256-byte pages
@@ -297,7 +396,14 @@ against. See [ADR-0018](adr/adr-0018-stm32-bootloader-command-surface.md).
 ```
 Exception
 ├── TransceiverTransportException      I/O-level failures during send/receive
-│                                      (write failed, disconnected mid-transfer)
+│                                      (write failed, disconnected mid-transfer,
+│                                      closed with bytes left unframed)
+│
+├── FramingException                   A healthy transport delivered a malformed
+│   │                                  frame — an illegal escape, an over-length
+│   │                                  frame, a decoder that rejected one
+│   └── FrameIntegrityException        A checksum did not match its contents
+│                                      (an RFC 1662 FCS mismatch)
 │
 ├── ModbusProtocolException            Modbus exception response from the device
 │   └── .ExceptionCode                 (typed ModbusProtocolExceptionCode enum)
@@ -321,10 +427,12 @@ Exception
 
 | Pattern | Where | Purpose |
 |---|---|---|
-| **Strategy (via detect function)** | `ReceiveMessage` parameter | Caller injects framing logic as a `Func<>` delegate rather than subclassing |
+| **Strategy** | `IFrameDecoder` passed to `Receive` | Framing is a value the caller injects, not a subclass or a fixed member |
+| **Decorator** | `Frame.WithMaxLength` / `.Validated` / `.WithIdleTimeout`; `MessageTransceiver` over `ITransceiver` | Compose framing rules, and bind a codec to a link, without either knowing about the other |
+| **Adapter** | `AsByteStream()` | Present a message channel as a byte channel, with the losses stated rather than hidden |
 | **Composition** | `IDuplexPipe.AsTransceiver()` | Wrap any duplex pipe in a transceiver without inheritance |
 | **Builder** | `ModbusRtuRequestBuilder` | Fluent frame construction |
-| **Dependency Inversion** | Protocol → `ITransceiver` | Protocols depend on the abstraction, never on a concrete transport |
+| **Dependency Inversion** | Protocol → `ITransceiver` / `IMessageTransceiver` | Protocols depend on the abstraction, never on a concrete transport |
 
 ---
 
@@ -343,14 +451,38 @@ background pump, a framing quirk, a vendor SDK that is not stream-shaped.
 ### Adding a new protocol
 
 1. Create a new package referencing `CallAndResponse`.
-2. Accept `ITransceiver` via constructor injection.
-3. Use the `SendReceive*` convenience methods to implement protocol operations.
+2. Pick the channel the protocol actually needs. Take `ITransceiver` when the protocol decides its own
+   boundaries — a fixed reply length, a terminator, a length field. Take a message channel when the
+   link is self-delimiting and the framing chooses for you.
+3. Implement operations with `SendReceive(bytes, decoder)` or `SendReceiveMessage(payload)`.
 4. Define protocol-specific exceptions.
+
+If the protocol has framing of its own — a checksum, a delimiter, an inter-frame gap — put it in an
+`IFrameCodec` and expose a channel type built from it, the way `ModbusRtu.Channel` does. A client that
+accepts any `IMessageTransceiver` while assuming its own framing will accept the wrong one silently.
 
 ### Custom framing
 
-Pass a custom `Func<ReadOnlyMemory<byte>, FrameDetectionResult>` to `SendReceive`
-or `ReceiveMessage` for protocol framing that doesn't match any built-in pattern.
+Compose the catalogue first: `Frame.LengthPrefixed(...).Validated(crc)` and
+`Frame.UntilTerminator(0x0A).WithMaxLength(512)` cover most of what devices actually do. When
+nothing fits, write the decode function:
+
+```csharp
+var decoder = Frame.OverSpan((received, isIdle, isTransportComplete, payload) =>
+{
+    if (received.Length < 4) return FrameDecodeResult.NeedMoreData;
+    payload.Write(received.Slice(2, 2));
+    return FrameDecodeResult.Frame(4);
+});
+```
+
+Write to `payload` only when returning `Frame`, keep `Decode` a pure function of its arguments, and
+report a malformed frame as `FrameDecodeResult.Invalid` rather than throwing. `Frame.Custom` is the
+same thing over a `ReadOnlySequence<byte>`, which avoids a copy when the transport hands back
+segmented buffers.
+
+For a framing that also transforms outgoing bytes, implement `IFrameCodec` and bind it with
+`WithFraming`. `SlipCodec` is the smallest complete example.
 
 ---
 

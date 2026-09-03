@@ -14,10 +14,9 @@ superseded_by: ""
 
 **Accepted**
 
-*Implementation status: not implemented. `IFrameDecoder`, `IFrameCodec`, `IMessageTransceiver`, and the
-`Frame` catalogue do not exist; `ITransceiver` and `FrameDetectionResult` are still as
-[ADR-0017](adr-0017-frame-consumed-length.md) left them. This record fixes the design before the code is
-written, and the refactor will be prototyped on a branch before it is merged.*
+*Implemented. `IFrameDecoder`, `IFrameCodec`, `IMessageTransceiver`, the `Frame` catalogue, `SlipCodec`,
+and `HdlcCodec` all exist, and `FrameDetectionResult` is gone. `docs/ARCHITECTURE.md` describes the
+result. DEC-010a corrects one claim this record made before the code was written.*
 
 ## Context
 
@@ -288,8 +287,17 @@ written, and the refactor will be prototyped on a branch before it is merged.*
   ```
 
   `LengthPrefixed` closes CTX-015. The combinators make the hybrids real devices actually present
-  expressible: `Frame.Exactly(5).WithIdleTimeout(gap)` and `Frame.UntilIdle(gap).Validated(Crc16Modbus)`
-  are neither of them expressible today.
+  expressible: `Frame.UntilIdle(gap).Validated(Crc16Modbus)` is Modbus RTU's real framing rule and is
+  not expressible today.
+
+- **DEC-010a**: `WithIdleTimeout` is a deadline, not a fallback framing. On the gap it asks the inner
+  decoder once more with the transport presented as complete, so a decoder that can finish on its
+  final bytes does, and one that cannot fails. It never returns the buffered wire bytes in the inner
+  decoder's place: that would skip unescaping, checksums, and anything `Validated` wrapped around it,
+  handing the caller undecoded bytes shaped like a payload. Framing on silence itself is
+  `Frame.UntilIdle`, which is a different question and has its own decoder. This corrects an earlier
+  reading of this record, under which `Frame.Exactly(5).WithIdleTimeout(gap)` returned whatever three
+  bytes had arrived — a partial frame presented as a whole one.
 
 - **DEC-011**: `ReceiveUntilIdle` leaves `ITransceiver` and becomes `Frame.UntilIdle(gap)` — a decoder
   whose `IdleTimeout` is non-null and which returns a frame when `IsIdle` and the buffer is non-empty.
