@@ -244,12 +244,15 @@ Combinators, which is the point of decoders being values:
 
 | Combinator | Effect |
 |---|---|
-| `.WithIdleTimeout(gap)` | Stop waiting at the gap: ask the inner decoder once more as if the transport had closed, and fail if it still cannot finish |
+| `.WithIdleTimeout(gap)` | Stop waiting once a reply stalls for the gap: ask the inner decoder once more as if the transport had closed, and fail if it still cannot finish |
 | `.WithMaxLength(n)` | Fail rather than accumulate forever when no frame arrives |
 | `.Validated(check)` | Reject a decoded payload — a CRC, a magic byte — before it reaches the caller |
 
 `Frame.UntilIdle(gap).Validated(crc)` is Modbus RTU's real framing rule, and was not expressible
 before [ADR-0020](adr/adr-0020-framing-codec-abstraction.md).
+
+Both measure the gap **between bytes**, so neither applies to a device that never answers at all —
+that is what the caller's cancellation token is for.
 
 `WithIdleTimeout` is a deadline rather than a framing rule, and the distinction matters. It never
 returns the buffered wire bytes in the inner decoder's place, because doing so would skip that

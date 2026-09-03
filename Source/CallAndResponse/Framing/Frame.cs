@@ -74,8 +74,13 @@ namespace CallAndResponse.Framing
         /// <summary>
         /// Everything accumulated when the line has been silent for <paramref name="gap"/>. Frames on
         /// time rather than content, for protocols whose boundary is the inter-frame gap and for
-        /// unsolicited bursts. Waits indefinitely for the first byte.
+        /// unsolicited bursts.
         /// </summary>
+        /// <remarks>
+        /// The gap is measured between bytes, so it starts once the first one arrives. Silence before
+        /// that is the device thinking, not a boundary, and this waits through it indefinitely — bound
+        /// that wait with the cancellation token.
+        /// </remarks>
         public static IFrameDecoder UntilIdle(TimeSpan gap)
         {
             if (gap <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(gap), gap, "Idle gap must be positive.");
@@ -131,17 +136,22 @@ namespace CallAndResponse.Framing
         }
 
         /// <summary>
-        /// Stop waiting after <paramref name="gap"/> of silence. On the gap, <paramref name="inner"/>
-        /// is asked once more with the transport treated as complete: a decoder that can finish on
-        /// its final bytes does, and one that cannot fails with a <see cref="FramingException"/>
-        /// instead of waiting for data that is not coming.
+        /// Stop waiting once a reply has stalled for <paramref name="gap"/>. On the gap,
+        /// <paramref name="inner"/> is asked once more with the transport treated as complete: a
+        /// decoder that can finish on its final bytes does, and one that cannot fails with a
+        /// <see cref="FramingException"/> instead of waiting for data that is not coming.
         /// </summary>
         /// <remarks>
+        /// Like <see cref="UntilIdle"/>, the gap is measured between bytes and so applies to a reply
+        /// that started and stopped, not to one that never began. A device that says nothing at all is
+        /// the cancellation token's business, not this decorator's.
+        /// <para>
         /// This is a timeout, not a framing rule. It never invents a frame out of a partial one, and
         /// it never returns the buffered wire bytes in place of what the inner decoder would have
         /// produced — that would skip unescaping, checksums, and anything
         /// <see cref="Validated"/> wrapped around it. To frame on the gap itself, use
         /// <see cref="UntilIdle"/>, which treats silence as the boundary rather than as a deadline.
+        /// </para>
         /// </remarks>
         public static IFrameDecoder WithIdleTimeout(this IFrameDecoder inner, TimeSpan gap)
         {
