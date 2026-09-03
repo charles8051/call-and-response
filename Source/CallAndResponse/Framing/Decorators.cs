@@ -3,7 +3,10 @@ using System.Buffers;
 
 namespace CallAndResponse.Framing
 {
-    /// <summary>Adds an idle wake-up to a content decoder. See <see cref="Frame.WithIdleTimeout"/>.</summary>
+    /// <summary>
+    /// Ends the frame at the idle gap when the inner decoder has not found one.
+    /// See <see cref="Frame.WithIdleTimeout"/>.
+    /// </summary>
     internal sealed class IdleTimeoutDecorator : IFrameDecoder
     {
         private readonly IFrameDecoder _inner;
@@ -17,7 +20,28 @@ namespace CallAndResponse.Framing
         public TimeSpan? IdleTimeout { get; }
 
         public FrameDecodeResult Decode(in FrameContext context, IBufferWriter<byte> payload)
-            => _inner.Decode(context, payload);
+        {
+            // The inner decoder gets its own writer: arming the idle timer is not enough on its
+            // own, because the built-in content decoders ignore IsIdle and would keep asking for
+            // data that is never coming. The fallback below is what makes the gap a boundary, and
+            // it must not append to whatever a misbehaving inner decoder already wrote.
+            var staged = new ArrayBufferWriter<byte>();
+            var result = _inner.Decode(context, staged);
+
+            if (result.Status != FrameDecodeStatus.NeedMoreData)
+            {
+                if (result.Status == FrameDecodeStatus.Frame) payload.Write(staged.WrittenSpan);
+                return result;
+            }
+
+            if (!context.IsIdle || context.Received.IsEmpty) return result;
+
+            // Silence with bytes in hand: take what arrived. This is the whole point of pairing a
+            // content framing with a gap — the device stopped talking, so the frame is what it is.
+            long length = context.Received.Length;
+            Frame.CopyTo(context.Received, 0, length, payload);
+            return FrameDecodeResult.Frame((int)length);
+        }
     }
 
     /// <summary>Bounds how far a decoder may accumulate. See <see cref="Frame.WithMaxLength"/>.</summary>

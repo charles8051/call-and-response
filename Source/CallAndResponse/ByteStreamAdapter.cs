@@ -68,6 +68,7 @@ namespace CallAndResponse
             {
                 var staging = new ArrayBufferWriter<byte>();
                 bool transportComplete = false;
+                TransceiverTransportException? transportFailure = null;
 
                 while (true)
                 {
@@ -103,8 +104,13 @@ namespace CallAndResponse
                         default:
                             if (transportComplete)
                             {
+                                // The decoder has had its look at the final bytes and still wants
+                                // more. Surface the original failure rather than a summary of it:
+                                // a dead link and a clean close arrive as the same exception type
+                                // here, and only the first one carries a cause worth reporting.
                                 throw new TransceiverTransportException(
-                                    $"Transport closed with {_bufferedCount} byte(s) left unframed.");
+                                    $"Transport closed with {_bufferedCount} byte(s) left unframed.",
+                                    transportFailure!);
                             }
 
                             try
@@ -112,11 +118,12 @@ namespace CallAndResponse
                                 var message = await _inner.ReceiveMessage(token).ConfigureAwait(false);
                                 Append(message.Span);
                             }
-                            catch (TransceiverTransportException)
+                            catch (TransceiverTransportException e)
                             {
                                 // Give the decoder its one look at the final bytes before failing,
                                 // so a decoder that can complete at end of stream still can.
                                 transportComplete = true;
+                                transportFailure = e;
                             }
 
                             continue;

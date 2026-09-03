@@ -452,6 +452,77 @@ public class FramingTests
     }
 
     [Fact]
+    public async Task WithIdleTimeout_TerminatorNeverArrives_ReturnsWhatCameBeforeTheGap()
+    {
+        // Arming the timer is not enough on its own: the content decoders ignore IsIdle, so
+        // without the fallback this waits for a terminator that is never coming.
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(0x01, 0x02, 0x03);
+
+        var result = await pipe.AsTransceiver().Receive(
+            Frame.UntilTerminator(0x0A).WithIdleTimeout(TimeSpan.FromMilliseconds(30)), Token());
+
+        result.ToArray().Should().Equal(0x01, 0x02, 0x03);
+    }
+
+    [Fact]
+    public async Task WithIdleTimeout_TerminatorArrivesFirst_TheContentFramingStillWins()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(0x01, 0x02, 0x0A, 0x03);
+
+        var sut = pipe.AsTransceiver();
+        var framed = await sut.Receive(
+            Frame.UntilTerminator(0x0A).WithIdleTimeout(TimeSpan.FromSeconds(5)), Token());
+        var remainder = await sut.Receive(Frame.Exactly(1), Token());
+
+        framed.ToArray().Should().Equal(0x01, 0x02);
+        remainder.ToArray().Should().Equal(0x03);
+    }
+
+    [Fact]
+    public async Task WithIdleTimeout_NothingArrives_KeepsWaitingRatherThanReturningEmpty()
+    {
+        var pipe = new FakeDuplexPipe();
+
+        var act = async () => await pipe.AsTransceiver().Receive(
+            Frame.UntilTerminator(0x0A).WithIdleTimeout(TimeSpan.FromMilliseconds(20)), Token(300));
+
+        // Silence before the first byte is the wait for the device to answer, not a frame boundary.
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task AsByteStream_UnderlyingTransportFails_TheRealCauseReachesTheCaller()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.CompleteRx(new IOException("the adapter was unplugged"));
+
+        var stream = pipe.AsTransceiver().WithFraming(new SlipCodec()).AsByteStream();
+        var act = async () => await stream.Receive(Frame.Exactly(4), Token());
+
+        // A pipe completed with a failure surfaces that failure, so the adapter must not mistake
+        // it for the end of the data and swallow it.
+        await act.Should().ThrowAsync<IOException>().WithMessage("the adapter was unplugged");
+    }
+
+    [Fact]
+    public async Task AsByteStream_TransportClosesMidMessage_KeepsTheUnderlyingReasonAsTheInnerException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(0xC0, 0x01, 0x02);   // a SLIP frame with no closing delimiter
+        pipe.CompleteRx();
+
+        var stream = pipe.AsTransceiver().WithFraming(new SlipCodec()).AsByteStream();
+        var act = async () => await stream.Receive(Frame.Exactly(4), Token());
+
+        // Two different truncations — the message and the byte-level read — and the caller should
+        // be able to see both rather than only the outer one.
+        var thrown = (await act.Should().ThrowAsync<TransceiverTransportException>()).Which;
+        thrown.InnerException.Should().BeOfType<TransceiverTransportException>();
+    }
+
+    [Fact]
     public async Task Validated_RejectedPayload_ThrowsAndDoesNotReachTheCaller()
     {
         var pipe = new FakeDuplexPipe();

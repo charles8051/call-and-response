@@ -16,8 +16,8 @@ public class ModbusRtuClientTests
 
     // RTU frames on the inter-frame gap, so the fake has to be allowed to go quiet. The gap is
     // short here because nothing follows it; a real link derives it from the baud rate.
-    private static IMessageTransceiver Channel(FakeDuplexPipe pipe) =>
-        pipe.AsTransceiver().WithFraming(ModbusRtu.Codec(TimeSpan.FromMilliseconds(20)));
+    private static ModbusRtuChannel Channel(FakeDuplexPipe pipe) =>
+        ModbusRtu.Channel(pipe.AsTransceiver(), TimeSpan.FromMilliseconds(20));
 
     // A test oracle for the CRC the codec now checks. Deliberately a second implementation
     // rather than a call into the codec, so a wrong polynomial fails instead of agreeing.

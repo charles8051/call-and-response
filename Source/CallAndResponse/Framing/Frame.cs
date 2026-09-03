@@ -131,8 +131,9 @@ namespace CallAndResponse.Framing
         }
 
         /// <summary>
-        /// Wake <paramref name="inner"/> after <paramref name="gap"/> of silence. Lets a content
-        /// framing also see the idle gap, which is what a protocol framed on both needs.
+        /// End the frame after <paramref name="gap"/> of silence when <paramref name="inner"/> has
+        /// not found one, returning whatever arrived. For protocols framed on content but bounded
+        /// by the gap — where a device that stops talking has finished its answer.
         /// </summary>
         public static IFrameDecoder WithIdleTimeout(this IFrameDecoder inner, TimeSpan gap)
         {

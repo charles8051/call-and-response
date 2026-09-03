@@ -11,7 +11,7 @@ public class TypedLoggerSupportTests
     public void ModbusRtuClient_TypedLoggerConstructor_CreatesInstance()
     {
         var pipe = new FakeDuplexPipe();
-        var channel = pipe.AsTransceiver().WithFraming(ModbusRtu.Codec(TimeSpan.FromMilliseconds(20)));
+        var channel = ModbusRtu.Channel(pipe.AsTransceiver(), TimeSpan.FromMilliseconds(20));
 
         var sut = new ModbusRtuClient(channel, NullLogger<ModbusRtuClient>.Instance);
 

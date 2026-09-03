@@ -13,7 +13,7 @@ await using var pipe = new SerialDuplexPipe(port);
 var transceiver = new Transceiver(pipe);
 
 // -- Bind Modbus RTU framing: the inter-frame gap plus the CRC --
-var channel = transceiver.WithFraming(ModbusRtu.Codec(ModbusRtu.GapFor(115200)));
+var channel = ModbusRtu.Channel(transceiver, baudRate: 115200);
 
 // -- Use it with a protocol client --
 var modbus = new ModbusRtuClient(channel);

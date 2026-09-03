@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Threading;
@@ -17,20 +17,20 @@ namespace CallAndResponse.Protocol.Modbus
     /// </remarks>
     public class ModbusRtuClient : IModbusClient
     {
-        private readonly IMessageTransceiver _channel;
+        private readonly ModbusRtuChannel _channel;
         private readonly ILogger _logger;
 
         /// <summary>
-        /// Create a client over an RTU-framed channel — normally
-        /// <c>transceiver.WithFraming(ModbusRtu.Codec(ModbusRtu.GapFor(baudRate)))</c>.
+        /// Create a client over an RTU-framed channel, from
+        /// <c>ModbusRtu.Channel(transceiver, baudRate)</c>.
         /// </summary>
-        public ModbusRtuClient(IMessageTransceiver channel)
+        public ModbusRtuClient(ModbusRtuChannel channel)
             : this(channel, NullLogger<ModbusRtuClient>.Instance)
         {
         }
 
-        /// <inheritdoc cref="ModbusRtuClient(IMessageTransceiver)" />
-        public ModbusRtuClient(IMessageTransceiver channel, ILogger<ModbusRtuClient> logger)
+        /// <inheritdoc cref="ModbusRtuClient(ModbusRtuChannel)" />
+        public ModbusRtuClient(ModbusRtuChannel channel, ILogger<ModbusRtuClient> logger)
         {
             _channel = channel ?? throw new ArgumentNullException(nameof(channel));
             _logger = logger ?? NullLogger<ModbusRtuClient>.Instance;

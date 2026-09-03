@@ -1,5 +1,7 @@
-using System;
+﻿using System;
 using System.Buffers;
+using System.Threading;
+using System.Threading.Tasks;
 using CallAndResponse.Framing;
 
 namespace CallAndResponse.Protocol.Modbus
@@ -31,6 +33,45 @@ namespace CallAndResponse.Protocol.Modbus
 
         /// <summary>Create an RTU codec framing on <paramref name="interFrameGap"/>.</summary>
         public static IFrameCodec Codec(TimeSpan interFrameGap) => new ModbusRtuCodec(interFrameGap);
+
+        /// <summary>
+        /// Bind RTU framing to <paramref name="transceiver"/>, giving the channel
+        /// <see cref="ModbusRtuClient"/> requires.
+        /// </summary>
+        public static ModbusRtuChannel Channel(ITransceiver transceiver, TimeSpan interFrameGap)
+            => new ModbusRtuChannel(transceiver, interFrameGap);
+
+        /// <summary>Bind RTU framing with the gap derived from <paramref name="baudRate"/>.</summary>
+        public static ModbusRtuChannel Channel(ITransceiver transceiver, int baudRate)
+            => new ModbusRtuChannel(transceiver, GapFor(baudRate));
+    }
+
+    /// <summary>
+    /// A message channel that is RTU-framed by construction.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ModbusRtuClient"/> takes this rather than a bare <see cref="IMessageTransceiver"/>
+    /// because it reads returned bytes as CRC-checked, gap-delimited RTU frames. Any other channel
+    /// would satisfy the interface and silently produce requests with no CRC and responses that were
+    /// never validated, so the type is what guarantees the framing rather than a convention.
+    /// </remarks>
+    public sealed class ModbusRtuChannel : IMessageTransceiver
+    {
+        private readonly IMessageTransceiver _inner;
+
+        internal ModbusRtuChannel(ITransceiver transceiver, TimeSpan interFrameGap)
+        {
+            if (transceiver is null) throw new ArgumentNullException(nameof(transceiver));
+            _inner = transceiver.WithFraming(new ModbusRtuCodec(interFrameGap));
+        }
+
+        /// <inheritdoc />
+        public Task SendMessage(ReadOnlyMemory<byte> payload, CancellationToken token)
+            => _inner.SendMessage(payload, token);
+
+        /// <inheritdoc />
+        public Task<Memory<byte>> ReceiveMessage(CancellationToken token)
+            => _inner.ReceiveMessage(token);
     }
 
     /// <summary>
