@@ -4,7 +4,7 @@ status: "Accepted"
 date: "2026-09-03"
 authors: "Repository maintainer"
 tags: ["architecture", "decision", "framing", "codec", "slip", "hdlc", "modbus"]
-supersedes: ""
+supersedes: "adr-0017-frame-consumed-length"
 superseded_by: ""
 ---
 
@@ -156,6 +156,9 @@ written, and the refactor will be prototyped on a branch before it is merged.*
   public interface IFrameDecoder
   {
       TimeSpan? IdleTimeout { get; }
+
+      /// Write the payload to <paramref name="payload"/> only when returning Frame.
+      /// The writer is a staging buffer owned by the receive loop; see DEC-004a.
       FrameDecodeResult Decode(in FrameContext context, IBufferWriter<byte> payload);
   }
   ```
@@ -175,12 +178,33 @@ written, and the refactor will be prototyped on a branch before it is merged.*
   frame cannot re-fire forever, and then throws. The receive loop additionally advances the reader in a
   `finally` so a misbehaving third-party decoder cannot wedge the pipe.
 
+- **DEC-004a**: Decoder output is transactional, and the receive loop enforces it rather than trusting
+  the decoder. `IBufferWriter<byte>` has no rewind, so a decoder that writes and then returns
+  `NeedMoreData` would duplicate its output on the next read, and one that writes and then returns
+  `Discard` or `Invalid` would leak bytes into the caller's destination. Neither is preventable by
+  DEC-005's purity rule alone: purity constrains what the decoder *reads*, not what it has already
+  *written*. So the loop passes a pooled staging writer, not the caller's destination, and copies to
+  the destination only on `Frame`. The staging buffer is reset before every `Decode` call. The
+  interface documents "write only when returning `Frame`" as the contract; the staging buffer is what
+  makes violating it harmless. The `Validated` combinator (DEC-010) depends on this directly, since it
+  decides pass or fail only after the wrapped decoder has written.
+
 - **DEC-005**: `Decode` must be a pure function of its context, per CTX-013. This is a documented
   contract, not an enforced one. Caching keyed on `Received.Length` is permitted; carrying semantic
-  state across calls is not.
+  state across calls is not. DEC-004a contains the damage when it is violated, but a decoder that
+  carries a partial-parse cursor across calls still mis-frames; only duplication is prevented.
 
 - **DEC-006**: `Discard` bounds CTX-010, and `IsTransportComplete` resolves CTX-011 by letting the
   decoder decide whether end of stream completes a frame or fails.
+
+- **DEC-006a**: `NeedMoreData` returned when `IsTransportComplete` is set is a terminal error, not an
+  ordinary incomplete read. Without this rule the loop either spins on a completed pipe that will never
+  produce another byte, or advances past the buffered remainder and loses it silently. The loop invokes
+  the decoder once on the final buffered bytes — so a decoder that can complete a frame at EOF, such as
+  `Frame.UntilTransportComplete`, gets its chance — and if that call still returns `NeedMoreData` it
+  throws `TransceiverTransportException` naming how many bytes were left unframed. `Frame.Exactly(n)`
+  given fewer than `n` bytes at EOF is the ordinary way to reach this, and a truncated response should
+  say so rather than hang or vanish.
 
 - **DEC-007**: Add the encoding half, which CTX-003 says has nowhere to live today.
 
@@ -229,9 +253,16 @@ written, and the refactor will be prototyped on a branch before it is merged.*
   public static ITransceiver        AsByteStream(this IMessageTransceiver c);
   ```
 
-  `AsByteStream` buffers whole decoded messages and serves caller-directed reads from them, carrying the
-  remainder forward. A caller-directed read that spans two messages is satisfied by concatenation; that
-  is inherent in asking a stream question of a message link and must be documented on the method.
+- **DEC-009a**: `AsByteStream` needs a stated contract in both directions, and only one of them is
+  lossless. **Receive**: it buffers whole decoded messages and serves caller-directed reads from them,
+  carrying the remainder forward; a read that spans two messages is satisfied by concatenation.
+  **Send**: each `Send` call becomes exactly one `SendMessage`. There is no buffering and no flush,
+  because a byte channel has no concept that would say when a message ends. The consequence has to be
+  stated plainly rather than hidden: a client that builds one logical frame from two `Send` calls emits
+  two messages, and no adapter can know it meant one. `Stm32BootloaderClient.Write256` sends its
+  command, address, and data separately and each is separately acknowledged, so one message per send is
+  right for AN3155 — but that is a property of AN3155, not a guarantee the adapter provides. Callers
+  whose sends do not align with message boundaries must use `IMessageTransceiver` directly.
 
 - **DEC-010**: Replace the twelve methods in `TransceiverExtensions` — mostly a `Send` cross-produced
   with one of five detectors — with `SendReceive(write, decoder)` plus a decoder catalogue.
@@ -327,8 +358,10 @@ written, and the refactor will be prototyped on a branch before it is merged.*
 
 - **DEC-018**: A protocol client written against `IMessageTransceiver` runs over SLIP, over HDLC, and
   over a terminator codec without modification, because it never expressed a byte-boundary opinion. A
-  client written against `ITransceiver` runs over a framed link through `AsByteStream` (DEC-009). Both
-  directions exist and neither pretends the two contracts are the same.
+  client written against `ITransceiver` runs over a framed link through `AsByteStream`, subject to
+  DEC-009a's send rule: free when its sends already align with message boundaries, and requiring the
+  client to move to `IMessageTransceiver` when they do not. Both directions exist and neither pretends
+  the two contracts are the same.
 
 ## Consequences
 
@@ -376,8 +409,10 @@ written, and the refactor will be prototyped on a branch before it is merged.*
   produces duplicated payloads rather than an exception. It is the sharpest hazard for third-party
   decoder authors and needs to be stated on the interface, not only here.
 
-- **NEG-005**: `AsByteStream` silently concatenates across message boundaries (DEC-009). It is the one
-  place in the design where a contract mismatch is papered over rather than made impossible.
+- **NEG-005**: `AsByteStream` is lossy in both directions in ways DEC-009a can state but not fix. Reads
+  concatenate across message boundaries, and each `Send` becomes one message whether or not the caller
+  meant one. It is the one place in the design where a contract mismatch is papered over rather than
+  made impossible, and its correctness depends on a property of the protocol using it.
 
 - **NEG-006**: The FCS table, the escape loops, and the ACCM handling are new correctness surface in the
   core package, verifiable only against published test vectors. A one-bit error in the CRC table is
@@ -387,7 +422,10 @@ written, and the refactor will be prototyped on a branch before it is merged.*
   over raw links, and DEC-016 is a reorganisation rather than a response to demand. The load-bearing
   half of this record is the codec types (DEC-001 through DEC-007); the channel split (DEC-008,
   DEC-009) is additive on top and could be deferred — but deferring it means changing
-  `ModbusRtuClient`'s constructor later, which is cheap now and expensive after `v2.0.0`.
+  `ModbusRtuClient`'s constructor later, which is cheap now and expensive after `v2.0.0`. The automated
+  review on [#24][ref-24] reached ALT-004 independently on exactly this ground, which is worth weighing:
+  two readings of the same evidence preferred the smaller mechanism, and this record accepts the larger
+  one on the strength of a future consumer rather than a present one.
 
 ## Alternatives Considered
 
@@ -469,9 +507,18 @@ written, and the refactor will be prototyped on a branch before it is merged.*
   flagged control octet arriving unescaped must be discarded on receive rather than reaching the
   payload.
 
-- **IMP-007**: Pin CTX-009 and CTX-013 with tests aimed at the hazards rather than the happy path: a
-  decoder that throws must not wedge the link, and a decoder that writes to its output on a
-  `NeedMoreData` return must not produce a duplicated payload.
+- **IMP-007**: Pin the contract hazards with tests aimed at misbehaving decoders rather than the happy
+  path. A decoder that throws must not wedge the link (CTX-009). A decoder that writes and then returns
+  `NeedMoreData` must not duplicate its payload, and one that writes and then returns `Discard` or
+  `Invalid` must not leak bytes into the caller's destination (DEC-004a) — both need a deliberately
+  badly-behaved decoder in the suite, since no correct decoder produces them. A decoder returning
+  `NeedMoreData` at `IsTransportComplete` must throw naming the unframed byte count, and
+  `Frame.UntilTransportComplete` must still get its final call (DEC-006a).
+
+- **IMP-007a**: Test `AsByteStream` against DEC-009a in both directions: a read spanning two messages
+  returns the concatenation, and two `Send` calls produce two messages rather than one. Both are the
+  documented behaviour rather than the desirable one, so the tests exist to stop a later change from
+  quietly making them something else.
 
 - **IMP-008**: All of this is hardware-free and belongs in the existing unit suite; see
   [ADR-0001](adr-0001-testing-strategy.md). Add loopback coverage for the two codecs when the serial
@@ -506,3 +553,4 @@ written, and the refactor will be prototyped on a branch before it is merged.*
 [ref-21]: https://github.com/charles8051/call-and-response/issues/21
 [ref-22]: https://github.com/charles8051/call-and-response/issues/22
 [ref-23]: https://github.com/charles8051/call-and-response/issues/23
+[ref-24]: https://github.com/charles8051/call-and-response/pull/24
