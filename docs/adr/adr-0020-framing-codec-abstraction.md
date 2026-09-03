@@ -426,14 +426,23 @@ result. DEC-010a corrects one claim this record made before the code was written
   core package, verifiable only against published test vectors. A one-bit error in the CRC table is
   invisible until it meets a real peer.
 
-- **NEG-007**: Nothing in the repository needs `IMessageTransceiver` today. Modbus and STM32 both run
-  over raw links, and DEC-016 is a reorganisation rather than a response to demand. The load-bearing
-  half of this record is the codec types (DEC-001 through DEC-007); the channel split (DEC-008,
-  DEC-009) is additive on top and could be deferred — but deferring it means changing
-  `ModbusRtuClient`'s constructor later, which is cheap now and expensive after `v2.0.0`. The automated
-  review on [#24][ref-24] reached ALT-004 independently on exactly this ground, which is worth weighing:
-  two readings of the same evidence preferred the smaller mechanism, and this record accepts the larger
-  one on the strength of a future consumer rather than a present one.
+- **NEG-007**: Part of this record's surface is speculative, and it is worth being exact about which
+  part. `IMessageTransceiver`, `IFrameCodec`, `MessageTransceiver`, and `WithFraming` are load-bearing:
+  `ModbusRtuClient` takes a `ModbusRtuChannel`, which is a codec bound to a link (DEC-016), so the
+  channel abstraction has a production consumer. `SlipCodec`, `HdlcCodec`, and `AsByteStream` do not.
+  Nothing in `Source/` references them outside their own definitions; only the tests do. They are
+  shipped on the strength of a future consumer rather than a present one, and a defect in either codec
+  becomes the default behaviour for whoever that consumer turns out to be.
+
+  The automated review reached ALT-004 independently on this ground across four passes on
+  [#24][ref-24] and [#25][ref-25], which is worth weighing: repeated readings of the same evidence
+  preferred the smaller mechanism.
+
+- **NEG-007a**: As written before implementation, NEG-007 said nothing in the repository needed
+  `IMessageTransceiver` and that DEC-016 was a reorganisation rather than a response to demand. That
+  was true of the code as it stood and false of what shipped, because DEC-016 is the thing that made
+  Modbus a consumer. The correction is recorded rather than silently applied: the record's own
+  reasoning about proportion was sound, and its inventory of what goes unused was one item too broad.
 
 ## Alternatives Considered
 
@@ -562,3 +571,4 @@ result. DEC-010a corrects one claim this record made before the code was written
 [ref-22]: https://github.com/charles8051/call-and-response/issues/22
 [ref-23]: https://github.com/charles8051/call-and-response/issues/23
 [ref-24]: https://github.com/charles8051/call-and-response/pull/24
+[ref-25]: https://github.com/charles8051/call-and-response/pull/25
