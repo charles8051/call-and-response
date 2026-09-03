@@ -22,12 +22,15 @@ If you want to know *why*, read these.
 | [0017](adr-0017-frame-consumed-length.md) | Separate Payload Extent from Frame Extent in FrameDetectionResult | Accepted |
 | [0018](adr-0018-stm32-bootloader-command-surface.md) | Scope of the STM32 Bootloader Command Surface | Accepted |
 | [0019](adr-0019-dual-serial-transport-backends.md) | Ship Serial Transports for Both System.IO.Ports and RJCP.SerialPortStream | Accepted |
+| [0020](adr-0020-framing-codec-abstraction.md) | Replace Frame Detection with a Bidirectional Framing Codec | Accepted |
 
 ADR-0001 and ADR-0005 hold, but each names a type or a target framework that has since changed; both
 carry a note saying which.
 
-ADR-0019 is accepted but not yet implemented. It describes packages and types that do not exist, and
-says so at the top.
+ADR-0019 and ADR-0020 are accepted but not yet implemented. Both describe types that do not exist, and
+both say so at the top. ADR-0020 supersedes ADR-0017 in substance — it removes the type ADR-0017 is
+about — but ADR-0017 stays listed as Accepted until the code lands, because until then it is still how
+the library works.
 
 ## Superseded and withdrawn
 
@@ -55,6 +58,11 @@ composition proposals in ADR-0010, ADR-0012, and ADR-0013 unnecessary rather tha
 ADR-0019 is the first record to build on that seam rather than rearrange it. Because a transport is now
 a constructor and two properties, a second serial backend is a package rather than an API change, and
 ADR-0003's objection to shipping two serial types no longer holds.
+
+ADR-0020 rearranges again, on the framing side. Adding SLIP and RFC 1662 async HDLC exposed two things
+`FrameDetectionResult` cannot do — produce a payload that is not a contiguous slice of the wire, and
+frame anything on the send path — so it replaces frame detection with a bidirectional codec and splits
+the byte channel from the message channel. It undoes ADR-0017 in the course of doing so.
 
 ## Two notes on numbering
 
