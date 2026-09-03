@@ -452,17 +452,67 @@ public class FramingTests
     }
 
     [Fact]
-    public async Task WithIdleTimeout_TerminatorNeverArrives_ReturnsWhatCameBeforeTheGap()
+    public async Task WithIdleTimeout_InnerDecoderCannotFinish_FailsRatherThanWaiting()
     {
-        // Arming the timer is not enough on its own: the content decoders ignore IsIdle, so
-        // without the fallback this waits for a terminator that is never coming.
+        // Arming the timer is not enough on its own: the content decoders ignore IsIdle and would
+        // wait for a terminator that is never coming. The gap is a deadline, so it fails here —
+        // returning the three buffered bytes would be inventing a frame out of a partial one.
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(0x01, 0x02, 0x03);
+
+        var act = async () => await pipe.AsTransceiver().Receive(
+            Frame.UntilTerminator(0x0A).WithIdleTimeout(TimeSpan.FromMilliseconds(30)), Token());
+
+        await act.Should().ThrowAsync<FramingException>().WithMessage("*3 byte(s) buffered*");
+    }
+
+    [Fact]
+    public async Task WithIdleTimeout_InnerDecoderCanFinishAtEndOfInput_ReturnsItsFrame()
+    {
+        // A decoder that knows how to finish on its final bytes gets to, because the gap is
+        // presented to it the same way the transport closing would be.
         var pipe = new FakeDuplexPipe();
         pipe.EnqueueRx(0x01, 0x02, 0x03);
 
         var result = await pipe.AsTransceiver().Receive(
-            Frame.UntilTerminator(0x0A).WithIdleTimeout(TimeSpan.FromMilliseconds(30)), Token());
+            Frame.UntilTransportComplete().WithIdleTimeout(TimeSpan.FromMilliseconds(30)), Token());
 
         result.ToArray().Should().Equal(0x01, 0x02, 0x03);
+    }
+
+    [Fact]
+    public async Task WithIdleTimeout_DoesNotHandBackUndecodedWireBytes()
+    {
+        // The failure this guards: completing from the buffer on idle would return the escaped
+        // frame, delimiters and all, in place of the payload the codec would have produced.
+        var codec = new SlipCodec();
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(0xC0, 0x41, 0xDB, 0xDC);   // an unterminated SLIP frame
+
+        var act = async () => await pipe.AsTransceiver().Receive(
+            codec.WithIdleTimeout(TimeSpan.FromMilliseconds(30)), Token());
+
+        await act.Should().ThrowAsync<FramingException>();
+    }
+
+    [Fact]
+    public async Task WithIdleTimeout_ValidationStillRunsAtTheGap()
+    {
+        // Whatever the deadline does, it must not route around Validated.
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(0x01, 0x02, 0x03);
+
+        var decoder = Frame.UntilTransportComplete()
+            .Validated((ReadOnlySpan<byte> payload, out string? reason) =>
+            {
+                reason = "checksum";
+                return false;
+            })
+            .WithIdleTimeout(TimeSpan.FromMilliseconds(30));
+
+        var act = async () => await pipe.AsTransceiver().Receive(decoder, Token());
+
+        await act.Should().ThrowAsync<FramingException>().WithMessage("checksum");
     }
 
     [Fact]

@@ -244,13 +244,17 @@ Combinators, which is the point of decoders being values:
 
 | Combinator | Effect |
 |---|---|
-| `.WithIdleTimeout(gap)` | End the frame at the gap when the inner decoder has not found one |
+| `.WithIdleTimeout(gap)` | Stop waiting at the gap: ask the inner decoder once more as if the transport had closed, and fail if it still cannot finish |
 | `.WithMaxLength(n)` | Fail rather than accumulate forever when no frame arrives |
 | `.Validated(check)` | Reject a decoded payload — a CRC, a magic byte — before it reaches the caller |
 
-`Frame.UntilIdle(gap).Validated(crc)` is Modbus RTU's real framing rule, and
-`Frame.Exactly(5).WithIdleTimeout(gap)` is what a device that sometimes answers short needs. Neither
-was expressible before ADR-0020.
+`Frame.UntilIdle(gap).Validated(crc)` is Modbus RTU's real framing rule, and was not expressible
+before [ADR-0020](adr/adr-0020-framing-codec-abstraction.md).
+
+`WithIdleTimeout` is a deadline rather than a framing rule, and the distinction matters. It never
+returns the buffered wire bytes in the inner decoder's place, because doing so would skip that
+decoder's unescaping, its checksum, and anything `Validated` wrapped around it — handing the caller
+undecoded bytes shaped like a payload. To frame on silence itself, use `Frame.UntilIdle`.
 
 ### Framing codecs
 
@@ -457,7 +461,7 @@ accepts any `IMessageTransceiver` while assuming its own framing will accept the
 ### Custom framing
 
 Compose the catalogue first: `Frame.LengthPrefixed(...).Validated(crc)` and
-`Frame.UntilTerminator(0x0A).WithIdleTimeout(gap)` cover most of what devices actually do. When
+`Frame.UntilTerminator(0x0A).WithMaxLength(512)` cover most of what devices actually do. When
 nothing fits, write the decode function:
 
 ```csharp

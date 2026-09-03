@@ -4,27 +4,25 @@ using System.Buffers;
 namespace CallAndResponse.Framing
 {
     /// <summary>
-    /// Ends the frame at the idle gap when the inner decoder has not found one.
-    /// See <see cref="Frame.WithIdleTimeout"/>.
+    /// Bounds how long a decoder may wait. See <see cref="Frame.WithIdleTimeout"/>.
     /// </summary>
     internal sealed class IdleTimeoutDecorator : IFrameDecoder
     {
         private readonly IFrameDecoder _inner;
+        private readonly TimeSpan _gap;
 
         internal IdleTimeoutDecorator(IFrameDecoder inner, TimeSpan gap)
         {
             _inner = inner;
-            IdleTimeout = gap;
+            _gap = gap;
         }
 
-        public TimeSpan? IdleTimeout { get; }
+        public TimeSpan? IdleTimeout => _gap;
 
         public FrameDecodeResult Decode(in FrameContext context, IBufferWriter<byte> payload)
         {
-            // The inner decoder gets its own writer: arming the idle timer is not enough on its
-            // own, because the built-in content decoders ignore IsIdle and would keep asking for
-            // data that is never coming. The fallback below is what makes the gap a boundary, and
-            // it must not append to whatever a misbehaving inner decoder already wrote.
+            // The first call is staged because a second may follow, and an inner decoder that
+            // wrote before asking for more data would otherwise have its output counted twice.
             var staged = new ArrayBufferWriter<byte>();
             var result = _inner.Decode(context, staged);
 
@@ -36,11 +34,21 @@ namespace CallAndResponse.Framing
 
             if (!context.IsIdle || context.Received.IsEmpty) return result;
 
-            // Silence with bytes in hand: take what arrived. This is the whole point of pairing a
-            // content framing with a gap — the device stopped talking, so the frame is what it is.
-            long length = context.Received.Length;
-            Frame.CopyTo(context.Received, 0, length, payload);
-            return FrameDecodeResult.Frame((int)length);
+            // Silence with bytes in hand means no more are coming, which is what
+            // IsTransportComplete tells a decoder. Give the inner decoder that and let it decide:
+            // returning the buffered wire bytes directly would bypass its unescaping, its checksum,
+            // and anything Validated wrapped around it, handing the caller undecoded bytes that
+            // look like a payload.
+            var final = new FrameContext(context.Received, isIdle: true, isTransportComplete: true);
+            result = _inner.Decode(final, payload);
+
+            if (result.Status != FrameDecodeStatus.NeedMoreData) return result;
+
+            // It cannot finish and nothing further will arrive. Say so rather than inventing a
+            // frame out of a partial one.
+            return FrameDecodeResult.Invalid(
+                (int)context.Received.Length,
+                $"No frame within {_gap.TotalMilliseconds:0.##}ms of silence ({context.Received.Length} byte(s) buffered).");
         }
     }
 

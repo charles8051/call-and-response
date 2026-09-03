@@ -1,12 +1,18 @@
 ---
 title: "ADR-0017: Separate Payload Extent from Frame Extent in FrameDetectionResult"
-status: "Accepted"
+status: "Superseded"
 date: "2026-09-02"
 authors: "Repository maintainer"
 tags: ["architecture", "decision", "api", "transceiver", "framing"]
 supersedes: ""
-superseded_by: ""
+superseded_by: "adr-0020-framing-codec-abstraction"
 ---
+
+> **Superseded by [ADR-0020](adr-0020-framing-codec-abstraction.md).** `FrameDetectionResult`
+> no longer exists. A decoder now produces the payload rather than describing where it sits, so
+> the payload extent this record separated from the frame extent is not expressed as an offset
+> at all. The reasoning below is why the distinction was needed, and it still holds — ADR-0020
+> removed the model that made the two conflatable rather than disagreeing with it.
 
 # ADR-0017: Separate Payload Extent from Frame Extent in FrameDetectionResult
 

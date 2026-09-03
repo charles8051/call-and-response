@@ -131,10 +131,18 @@ namespace CallAndResponse.Framing
         }
 
         /// <summary>
-        /// End the frame after <paramref name="gap"/> of silence when <paramref name="inner"/> has
-        /// not found one, returning whatever arrived. For protocols framed on content but bounded
-        /// by the gap — where a device that stops talking has finished its answer.
+        /// Stop waiting after <paramref name="gap"/> of silence. On the gap, <paramref name="inner"/>
+        /// is asked once more with the transport treated as complete: a decoder that can finish on
+        /// its final bytes does, and one that cannot fails with a <see cref="FramingException"/>
+        /// instead of waiting for data that is not coming.
         /// </summary>
+        /// <remarks>
+        /// This is a timeout, not a framing rule. It never invents a frame out of a partial one, and
+        /// it never returns the buffered wire bytes in place of what the inner decoder would have
+        /// produced — that would skip unescaping, checksums, and anything
+        /// <see cref="Validated"/> wrapped around it. To frame on the gap itself, use
+        /// <see cref="UntilIdle"/>, which treats silence as the boundary rather than as a deadline.
+        /// </remarks>
         public static IFrameDecoder WithIdleTimeout(this IFrameDecoder inner, TimeSpan gap)
         {
             if (inner is null) throw new ArgumentNullException(nameof(inner));

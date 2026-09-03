@@ -73,7 +73,7 @@ var frame = await transceiver.Receive(
     Frame.LengthPrefixed(prefixOffset: 1, prefixSize: 2).Validated(MyChecksum),
     cancellationToken);
 
-// A device that sometimes answers short: whichever comes first
+// Bound the wait: fail after 50ms of silence instead of hanging until your token
 var reply = await transceiver.Receive(
     Frame.Exactly(16).WithIdleTimeout(TimeSpan.FromMilliseconds(50)),
     cancellationToken);
