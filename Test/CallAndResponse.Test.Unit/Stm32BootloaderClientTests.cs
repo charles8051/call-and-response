@@ -1,4 +1,4 @@
-using CallAndResponse.Protocol.Stm32Bootloader;
+﻿using CallAndResponse.Protocol.Stm32Bootloader;
 using CallAndResponse.Test.Unit.Helpers;
 using FluentAssertions;
 
@@ -11,10 +11,9 @@ namespace CallAndResponse.Test.Unit;
 /// <para>
 /// Encoding rules for response bytes:
 /// <list type="bullet">
-///   <item><c>SendReceiveExactly(write, n, token)</c> → enqueue exactly <c>n</c> response bytes.</item>
-///   <item><c>SendReceivePerfectMatch(write, match, token)</c> → enqueue the <c>match</c> bytes
-///   (ReceiveUntilPerfectMatch returns the bytes that equal match).</item>
-///   <item><c>SendReceiveHeaderFooter(write, hdr, ftr, token)</c> → enqueue <c>hdr + payload + ftr</c>.</item>
+///   <item><c>SendReceive(write, Frame.Exactly(n), token)</c> → enqueue exactly <c>n</c> response bytes.</item>
+///   <item><c>SendAndExpectAck(write, …)</c> → enqueue one status byte, ACK or NACK.</item>
+///   <item><c>Receive(Frame.LengthPrefixed(…), token)</c> → enqueue the whole frame the prefix describes.</item>
 /// </list>
 /// </para>
 /// </summary>
@@ -28,15 +27,11 @@ public class Stm32BootloaderClientTests
 
     // Helpers -----------------------------------------------------------------
 
-    /// <summary>
-    /// Enqueues a single ACK — used for SendReceivePerfectMatch(…, new byte[]{ Ack }, …).
-    /// ReceiveUntilPerfectMatch scans for the match bytes in the accumulated buffer and
-    /// returns them, so the buffer must contain the match bytes.
-    /// </summary>
+    /// <summary>Enqueues the single ACK a command frame is answered with.</summary>
     private static void EnqueueAck(FakeDuplexPipe p) => p.EnqueueRx(Ack);
 
     /// <summary>
-    /// Enqueues a single NACK for SendReceiveExactly(…, 1, …).
+    /// Enqueues a single NACK.
     /// </summary>
     private static void EnqueueNack(FakeDuplexPipe p) => p.EnqueueRx(Nack);
 
@@ -694,6 +689,104 @@ public class Stm32BootloaderClientTests
 
         // N = 0 for one page; checksum = XOR(0x00, 0x07) = 0x07
         pipe.SentBytes.Skip(2).Should().Equal(0x00, 0x07, 0x07);
+    }
+
+    // -------------------------------------------------------------------------
+    // NACK on the frames that used to scan for an ACK (#22)
+    //
+    // These three commands checked for an ACK by scanning the buffer for it, so a NACK
+    // matched nothing, the read never completed, and the caller saw a timeout instead of a
+    // rejection. They are the firmware-update path, which is the worst place for a silent
+    // hang, and they had no NACK coverage — the bug's own scenario was the untested one.
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task WriteMemory_WhenDeviceNacksCommandFrame_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Nack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.WriteMemory(new byte[] { 0x01, 0x02, 0x03, 0x04 }, token: Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    [Fact]
+    public async Task WriteMemory_WhenDeviceNacksAddressFrame_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack);
+        pipe.EnqueueRx(Nack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.WriteMemory(new byte[] { 0x01, 0x02, 0x03, 0x04 }, token: Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    [Fact]
+    public async Task WriteMemory_WhenDeviceNacksDataFrame_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack);
+        pipe.EnqueueRx(Ack);
+        pipe.EnqueueRx(Nack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.WriteMemory(new byte[] { 0x01, 0x02, 0x03, 0x04 }, token: Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    [Fact]
+    public async Task Go_WhenDeviceNacksCommandFrame_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Nack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.Go(token: Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    [Fact]
+    public async Task Go_WhenDeviceNacksAddressFrame_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack);
+        pipe.EnqueueRx(Nack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.Go(token: Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    [Fact]
+    public async Task ExtendedEraseMass_WhenDeviceNacksCommandFrame_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Nack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.ExtendedEraseMass(Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
+    }
+
+    [Fact]
+    public async Task ExtendedEraseMass_WhenDeviceNacksPayloadFrame_ThrowsStm32BootloaderException()
+    {
+        var pipe = new FakeDuplexPipe();
+        pipe.EnqueueRx(Ack);
+        pipe.EnqueueRx(Nack);
+
+        var client = new Stm32BootloaderClient(pipe.AsTransceiver());
+        var act = async () => await client.ExtendedEraseMass(Token());
+
+        await act.Should().ThrowAsync<Stm32BootloaderException>();
     }
 
     [Fact]
