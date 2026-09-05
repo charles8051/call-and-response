@@ -91,7 +91,11 @@ superseded_by: ""
   Periphery's most recent tag, `v4.1.0-alpha.2`, is dated 2026-08-30 and the port landed in
   `32cfe6b` on 2026-09-03, so no release has packed them yet. Periphery's publish workflow packs
   every packable `src/` project, so its next `v*` tag ships them. Until then, the only way to consume
-  them is a project reference against a Periphery checkout.
+  them is a project reference against a Periphery checkout: `charles8051/periphery`,
+  `src/Periphery.Serial/Periphery.Serial.csproj` and
+  `src/Periphery.Serial.Rjcp/Periphery.Serial.Rjcp.csproj`. `Periphery.Serial.Rjcp` is the drop-in
+  for `SerialDuplexPipe`, being the same `SerialPortStream`-backed pump; `Periphery.Serial` is the
+  `System.IO.Ports` backend and the shared pump the wrapper depends on.
 
 - **CTX-011**: `Examples/Example.Transport.Serial` and `Examples/Example.Transport.Ble` are the only
   runnable on-ramp in the repository, and both exist to demonstrate a transport. The README's
