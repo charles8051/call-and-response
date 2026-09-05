@@ -126,9 +126,12 @@ superseded_by: ""
 
 - **DEC-005a**: The serial removal does not land until that pointer resolves. Per CTX-010a the
   replacement is currently source-only, and deleting a published package while its successor is
-  unreleased leaves a consumer with neither. The removal is gated on `Periphery.Serial.Rjcp` being
-  on nuget.org, and the README must name a version. The BLE removal is not gated, because DEC-002's
-  package was never published and has no successor to wait for.
+  unreleased leaves a consumer with neither. The removal is gated on **both** `Periphery.Serial` and
+  `Periphery.Serial.Rjcp` being on nuget.org and resolvable, and the README must name a version for
+  the one it points at. Both, because `Periphery.Serial.Rjcp` carries a project reference to
+  `Periphery.Serial`, so it packs with a dependency on it: the wrapper alone restores to a missing
+  dependency, which is a worse failure than the package simply not existing. The BLE removal is not
+  gated, because DEC-002's package was never published and has no successor to wait for.
 
 - **DEC-006**: `FakeSerialStream` goes with `SerialDuplexPipeTests`. It exists to fake a serial
   stream for the pump, and nothing else uses it.
@@ -225,11 +228,17 @@ superseded_by: ""
 - **IMP-001**: Delete in one change, not two. A commit that removes the serial package while the
   README still tells people to install it is worse than either end state.
 
-- **IMP-001a**: Before the serial removal lands, confirm `Periphery.Serial.Rjcp` resolves on
-  nuget.org and pin the version the README will name:
-  `curl -s https://api.nuget.org/v3-flatcontainer/periphery.serial.rjcp/index.json`. As of
-  2026-09-04 that returns `BlobNotFound` for both Periphery serial packages, which is DEC-005a's
-  gate. The BLE removal can proceed independently.
+- **IMP-001a**: Before the serial removal lands, confirm **both** packages resolve, per DEC-005a:
+
+  ```bash
+  curl -s https://api.nuget.org/v3-flatcontainer/periphery.serial/index.json
+  curl -s https://api.nuget.org/v3-flatcontainer/periphery.serial.rjcp/index.json
+  ```
+
+  As of 2026-09-04 both return `BlobNotFound`. Checking the index is necessary and not sufficient —
+  finish with a real restore of `Periphery.Serial.Rjcp` in a scratch project, which is the only thing
+  that proves the transitive `Periphery.Serial` dependency resolves at the version the wrapper packed
+  against. The BLE removal can proceed independently.
 
 - **IMP-002**: Touch points beyond the two project directories: `CallAndResponse.slnx`,
   `.github/workflows/publish.yml`'s packable set, `README.md` (quick-start, package table, repository
