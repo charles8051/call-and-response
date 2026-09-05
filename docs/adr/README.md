@@ -22,6 +22,7 @@ If you want to know *why*, read these.
 | [0018](adr-0018-stm32-bootloader-command-surface.md) | Scope of the STM32 Bootloader Command Surface | Accepted |
 | [0019](adr-0019-dual-serial-transport-backends.md) | Ship Serial Transports for Both System.IO.Ports and RJCP.SerialPortStream | Accepted |
 | [0020](adr-0020-framing-codec-abstraction.md) | Replace Frame Detection with a Bidirectional Framing Codec | Accepted |
+| [0021](adr-0021-drop-transport-packages.md) | Drop the Serial and BLE Transport Packages | Proposed |
 
 ADR-0001 and ADR-0005 hold, but each names a type or a target framework that has since changed; both
 carry a note saying which.
@@ -29,6 +30,11 @@ carry a note saying which.
 ADR-0019 is accepted but not yet implemented. It describes packages and types that do not exist, and
 says so at the top. ADR-0020 is implemented, and ADR-0017 moved to superseded when that code landed:
 the type it is about no longer exists.
+
+ADR-0021 proposes removing the transport packages and withdrawing ADR-0019 with them. It is Proposed,
+not Accepted — nothing has been deleted, and its serial half is gated on the replacement reaching
+nuget.org (ADR-0021 DEC-005a). When it is implemented, the ADR-0019 sentence above has to change with
+it.
 
 ## Superseded and withdrawn
 
