@@ -32,7 +32,9 @@ says so at the top. ADR-0020 is implemented, and ADR-0017 moved to superseded wh
 the type it is about no longer exists.
 
 ADR-0021 proposes removing the transport packages and withdrawing ADR-0019 with them. It is Proposed,
-not Accepted — nothing has been deleted.
+not Accepted — nothing has been deleted, and its serial half is gated on the replacement reaching
+nuget.org (ADR-0021 DEC-005a). When it is implemented, the ADR-0019 sentence above has to change with
+it.
 
 ## Superseded and withdrawn
 

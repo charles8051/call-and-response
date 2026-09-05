@@ -50,8 +50,18 @@ superseded_by: ""
 
 - **CTX-006**: Periphery states its reason in `Periphery.Bootloader.Stm32.Serial.csproj`: it builds
   its port and pipe over `Periphery.Serial` "rather than CallAndResponse.Transport.Serial, which was
-  the only RJCP-pulling package this flasher touched", and records that identical AN3155 round trips
-  ran **three times faster** over the BCL backend than over RJCP.
+  the only RJCP-pulling package this flasher touched". The performance claim behind that is recorded
+  in Periphery ADR-0062's amendment, dated 2026-09-02: "the backend choice costs 3x on a
+  request-response protocol", and for the flashing workloads that repository serves, RJCP "is the
+  wrong default by 3x".
+
+- **CTX-006a**: What this record has and has not checked about that number. It has confirmed the
+  claim is written down in a checked-in decision record with a date, rather than only in a csproj
+  comment. It has **not** reproduced the benchmark, does not know the workload's exact shape, and
+  cannot say whether the gap holds for framings other than AN3155. The number is treated here as
+  Periphery's recorded finding about its own workload, which is enough to explain why that consumer
+  left. It is not treated as a general statement about the two backends, and DEC-005 does not repeat
+  it to users.
 
 - **CTX-007**: That measurement is the one [ADR-0019](adr-0019-dual-serial-transport-backends.md)
   asked for and never got. ADR-0019 IMP-001 said to confirm the synchronous-read behaviour by
@@ -76,6 +86,13 @@ superseded_by: ""
   and `.7`. Dropping a package from future releases costs a stable consumer nothing, because there
   is no stable consumer to cost.
 
+- **CTX-010a**: The replacement is not installable today. `Periphery.Serial` and
+  `Periphery.Serial.Rjcp` are packable and in `Periphery.slnx`, but neither is on nuget.org:
+  Periphery's most recent tag, `v4.1.0-alpha.2`, is dated 2026-08-30 and the port landed in
+  `32cfe6b` on 2026-09-03, so no release has packed them yet. Periphery's publish workflow packs
+  every packable `src/` project, so its next `v*` tag ships them. Until then, the only way to consume
+  them is a project reference against a Periphery checkout.
+
 - **CTX-011**: `Examples/Example.Transport.Serial` and `Examples/Example.Transport.Ble` are the only
   runnable on-ramp in the repository, and both exist to demonstrate a transport. The README's
   quick-start opens a `SerialPortStream` and wraps it in `SerialDuplexPipe`.
@@ -87,8 +104,11 @@ superseded_by: ""
   set that `publish.yml` pushes to nuget.org.
 
 - **DEC-002**: Delete `CallAndResponse.Transport.BleNordicUart` and
-  `Examples/Example.Transport.Ble`. It was never published, so nothing depends on it, and CTX-004
-  says it was never worth a project.
+  `Examples/Example.Transport.Ble`. It has no package consumers, because it was never packed. That
+  is narrower than having no consumers at all: CTX-001 notes the README tells people to reference the
+  project or copy the file, and neither leaves a trace this repository can see. The cost is bounded
+  by CTX-004 — the file is 40 lines that pair two `Pipe`s, so a copy-and-paste consumer already owns
+  its copy and a project-reference consumer can take one from the git history.
 
 - **DEC-003**: Do not unlist the published `CallAndResponse.Transport.Serial` versions. They keep
   working for anyone already referencing them. Retracting a version that a consumer references trades
@@ -103,6 +123,12 @@ superseded_by: ""
 - **DEC-005**: The README's quick-start points at `Periphery.Serial.Rjcp` for a serial pipe, and
   keeps `PipeReader.Create(stream)` as the no-package path for everything stream-shaped. The library
   documents the seam and names a transport that implements it, rather than shipping one.
+
+- **DEC-005a**: The serial removal does not land until that pointer resolves. Per CTX-010a the
+  replacement is currently source-only, and deleting a published package while its successor is
+  unreleased leaves a consumer with neither. The removal is gated on `Periphery.Serial.Rjcp` being
+  on nuget.org, and the README must name a version. The BLE removal is not gated, because DEC-002's
+  package was never published and has no successor to wait for.
 
 - **DEC-006**: `FakeSerialStream` goes with `SerialDuplexPipeTests`. It exists to fake a serial
   stream for the pump, and nothing else uses it.
@@ -151,6 +177,11 @@ superseded_by: ""
   DEC-003 accepts that as better than the alternative, but it is a real cost and the README should
   say where the successor lives.
 
+- **NEG-004a**: The serial half of this record cannot be executed on its own schedule. DEC-005a
+  gates it on another repository cutting a release, and that repository has no reason to hurry on
+  this account. Until then the record is a decision the repository is holding rather than one it has
+  acted on, which is a state ADRs are bad at representing.
+
 - **NEG-004**: The decision rests on one consumer. Periphery is the only visible one, and a library
   scoped to its only known caller is a library that has stopped anticipating. The counter is that
   the caller did not ask for a change — it left, which is stronger evidence than a request.
@@ -194,6 +225,12 @@ superseded_by: ""
 - **IMP-001**: Delete in one change, not two. A commit that removes the serial package while the
   README still tells people to install it is worse than either end state.
 
+- **IMP-001a**: Before the serial removal lands, confirm `Periphery.Serial.Rjcp` resolves on
+  nuget.org and pin the version the README will name:
+  `curl -s https://api.nuget.org/v3-flatcontainer/periphery.serial.rjcp/index.json`. As of
+  2026-09-04 that returns `BlobNotFound` for both Periphery serial packages, which is DEC-005a's
+  gate. The BLE removal can proceed independently.
+
 - **IMP-002**: Touch points beyond the two project directories: `CallAndResponse.slnx`,
   `.github/workflows/publish.yml`'s packable set, `README.md` (quick-start, package table, repository
   layout), `docs/ARCHITECTURE.md` (layer diagram, package map, the whole Transport Implementations
@@ -205,10 +242,13 @@ superseded_by: ""
 
 - **IMP-004**: Add the withdrawal banner to ADR-0019 and move it to the superseded-and-withdrawn
   table in `docs/adr/README.md`, pointing at this record and at Periphery ADR-0062. Per DEC-004 the
-  banner should say the work moved rather than that the design was wrong.
+  banner should say the work moved rather than that the design was wrong. The index also carries a
+  prose paragraph saying "ADR-0019 is accepted but not yet implemented", and the note this record
+  added below it; both have to change in the same commit or the index contradicts its own table.
 
-- **IMP-005**: Verify the claim in CTX-006 against Periphery before citing the number in the README.
-  It is quoted here from a csproj comment, not from a run in this repository.
+- **IMP-005**: Do not repeat the 3x figure in the README. Per CTX-006a it is Periphery's recorded
+  finding about its own AN3155 workload, not a benchmark this repository ran or a general claim about
+  the two backends. The README needs to name a replacement package, not argue a performance case.
 
 - **IMP-006**: Periphery ADR-0062's own `status_note` says "there is no `Periphery.Serial` package",
   which predates #168 and is now stale. Worth telling that repository, since this record leans on
