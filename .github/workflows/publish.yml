@@ -28,8 +28,81 @@ permissions:
   contents: read
 
 jobs:
+  # The check that the repository describes the release being tagged. It runs before
+  # anything is built, so a forgotten doc costs a re-tag and nothing else -- once
+  # nuget.org has a version, what shipped with it cannot be replaced.
+  #
+  # docs/BREAKING-CHANGES.md groups entries by the release they ship in. An
+  # "## Unreleased" heading at tag time means the section this tag ships was never
+  # retitled, so the doc tells a reader that changes they just received are still
+  # pending. Fix it, delete the tag, and tag again:
+  #
+  #   git tag -d vX.Y.Z && git push origin :refs/tags/vX.Y.Z
+  #
+  # The job also reads the annotated tag's message into the run summary. Nothing
+  # consumes it yet -- this workflow does not create a GitHub Release -- but the tag
+  # message is the release notes, and having it on the run is how a reviewer confirms
+  # the tag carries one before the packages go out.
+  #
+  # On workflow_dispatch the steps are skipped and the job still succeeds. A skipped
+  # job would skip the publish job that needs it, which would retire the dry run.
+  release-notes:
+    name: Check the release describes itself
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Assert BREAKING-CHANGES.md names this release
+        if: ${{ github.event_name == 'push' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          doc=docs/BREAKING-CHANGES.md
+          [ -f "$doc" ] || { echo "::error::$doc is missing."; exit 1; }
+          if grep -qiE '^##[[:space:]]+\[?Unreleased\]?[[:space:]]*$' "$doc"; then
+            echo "::error file=$doc::Still has an '## Unreleased' heading at ${GITHUB_REF_NAME}."
+            echo "Retitle that section to ${GITHUB_REF_NAME}, commit, and move the tag."
+            grep -niE '^##[[:space:]]+\[?Unreleased\]?[[:space:]]*$' "$doc"
+            exit 1
+          fi
+          echo "No unreleased section. ${GITHUB_REF_NAME} is described."
+
+      - name: Read the annotated tag message
+        if: ${{ github.event_name == 'push' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # checkout replaces annotated tags with lightweight ones, which have no
+          # message. Re-fetch the tag objects before reading their contents.
+          git fetch --force --tags --quiet
+          tag="${GITHUB_REF_NAME}"
+          if [ "$(git cat-file -t "$tag" 2>/dev/null || true)" != "tag" ]; then
+            echo "::warning::${tag} is a lightweight tag and carries no release notes."
+            exit 0
+          fi
+          # A subject that is only the tag name repeats the version, so it is dropped.
+          # Any other subject is part of the notes. Drop a PGP trailer if signed.
+          subject="$(git tag -l --format='%(contents:subject)' "$tag")"
+          if [ "$subject" = "$tag" ]; then part='contents:body'; else part='contents'; fi
+          body="$(git tag -l --format="%(${part})" "$tag" | sed '/-----BEGIN PGP SIGNATURE-----/,$d')"
+          if [ -z "${body//[$' \t\n']/}" ]; then
+            echo "::warning::${tag} has an empty message; it carries no release notes."
+          fi
+          {
+            echo "## Release notes on \`${tag}\`"
+            echo
+            echo "$body"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Release notes, ${#body} chars:"
+          echo "$body"
+
   publish:
     name: Pack and publish
+    needs: [release-notes]
     runs-on: ubuntu-latest
     environment: nuget.org
     permissions:

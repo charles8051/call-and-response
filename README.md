@@ -8,6 +8,10 @@ The library is pure framing and protocol logic. It never opens, closes, or
 manages transport connections — you provide an active `IDuplexPipe` from
 `System.IO.Pipelines`, and CallAndResponse handles message framing on top of it.
 
+> **The 2.x line is in alpha.** The public surface moves between alpha releases.
+> Each change is listed with its fix in
+> [docs/BREAKING-CHANGES.md](docs/BREAKING-CHANGES.md).
+
 ## Getting Started
 
 ### Prerequisites
@@ -148,7 +152,8 @@ Transport Layer      (SerialDuplexPipe, BleNordicUartPipe — implement IDuplexP
   underlying connection and its lifecycle.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture
-document.
+document, and [docs/BREAKING-CHANGES.md](docs/BREAKING-CHANGES.md) for what moved
+in each release and what to write instead.
 
 ## Adding a Transport
 
@@ -245,6 +250,7 @@ CallAndResponse/
 │
 ├── docs/
 │   ├── ARCHITECTURE.md
+│   ├── BREAKING-CHANGES.md                       What moved in each release
 │   └── adr/                                      Architecture decision records
 │
 └── CallAndResponse.slnx

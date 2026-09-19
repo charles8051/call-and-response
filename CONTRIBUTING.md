@@ -56,12 +56,23 @@ Write the ADR when the decision is made, not months later. ADR-0015 is what happ
 - One logical change per PR.
 - Keep the existing code style; there is no formatter config, so match the surrounding file.
 - Make sure `dotnet test CallAndResponse.slnx` passes before opening the PR.
-- Note any breaking public API change explicitly in the description.
+- A change a caller can see — a removed or changed signature, or a behaviour change at the
+  same signature — adds an entry under `## Unreleased` in
+  [docs/BREAKING-CHANGES.md](docs/BREAKING-CHANGES.md): what changed, who it affects, and
+  what to write instead. Note it in the PR description too, but the doc is what a consumer
+  reads.
 
 ## Releasing
 
 Releases are cut by pushing a `v*` tag. `MinVer` derives the package version from that tag, so an
 untagged build produces a `0.0.0-alpha.0`-shaped version rather than a release one.
+
+In the release commit, retitle the `## Unreleased` section of
+[docs/BREAKING-CHANGES.md](docs/BREAKING-CHANGES.md) to the version being tagged
+(`` ## `v2.0.0-alpha.8` — since `v2.0.0-alpha.7` ``). The `release-notes` job refuses a tag
+whose doc still says `Unreleased`, and every other job needs it, so a refused tag builds and
+publishes nothing. Tag annotated, with the release notes as the message body — the job reads
+it into the run summary, and nothing else records what a release was for.
 
 `.github/workflows/publish.yml` builds, tests, packs the four library projects, and pushes them to
 nuget.org. It authenticates with
