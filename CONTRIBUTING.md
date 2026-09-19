@@ -56,12 +56,39 @@ Write the ADR when the decision is made, not months later. ADR-0015 is what happ
 - One logical change per PR.
 - Keep the existing code style; there is no formatter config, so match the surrounding file.
 - Make sure `dotnet test CallAndResponse.slnx` passes before opening the PR.
-- Note any breaking public API change explicitly in the description.
+- Every change a consumer can see gets an entry under `## Unreleased` in
+  [CHANGELOG.md](CHANGELOG.md).
+- A **breaking** change — a removed or changed signature, or a behaviour change at the same
+  signature — additionally gets an entry under `## Unreleased` in
+  [docs/BREAKING-CHANGES.md](docs/BREAKING-CHANGES.md): what changed, who it affects, and
+  what to write instead. Note it in the PR description too, but the doc is what a consumer
+  reads.
 
 ## Releasing
 
 Releases are cut by pushing a `v*` tag. `MinVer` derives the package version from that tag, so an
 untagged build produces a `0.0.0-alpha.0`-shaped version rather than a release one.
+
+In the release commit, retitle the `## Unreleased` section of
+[CHANGELOG.md](CHANGELOG.md) to `## 2.0.0-alpha.8 - <date>`, and the one in
+[docs/BREAKING-CHANGES.md](docs/BREAKING-CHANGES.md) to
+`` ## `v2.0.0-alpha.8` — since `v2.0.0-alpha.7` ``.
+
+Every release gets a `CHANGELOG.md` section, including one that changes nothing a caller can
+see. `docs/BREAKING-CHANGES.md` gets one only when something broke — which is why the
+changelog is the doc the gate checks by name.
+
+Tag **annotated**, with the release notes as the message body. The workflow creates no GitHub
+Release, so the run summary is where those notes are read.
+
+The `release-notes` job fails the release when either doc still says `Unreleased`, when
+`CHANGELOG.md`'s newest heading is not the version being tagged, or when the tag is
+lightweight or its message is empty. `publish` needs that job, so a refused tag builds and
+publishes nothing. Fix it, delete the tag, and tag again:
+
+```bash
+git tag -d v2.0.0-alpha.8 && git push origin :refs/tags/v2.0.0-alpha.8
+```
 
 `.github/workflows/publish.yml` builds, tests, packs the four library projects, and pushes them to
 nuget.org. It authenticates with
