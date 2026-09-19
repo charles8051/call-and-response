@@ -56,8 +56,10 @@ Write the ADR when the decision is made, not months later. ADR-0015 is what happ
 - One logical change per PR.
 - Keep the existing code style; there is no formatter config, so match the surrounding file.
 - Make sure `dotnet test CallAndResponse.slnx` passes before opening the PR.
-- A change a caller can see — a removed or changed signature, or a behaviour change at the
-  same signature — adds an entry under `## Unreleased` in
+- Every change a consumer can see gets an entry under `## Unreleased` in
+  [CHANGELOG.md](CHANGELOG.md).
+- A **breaking** change — a removed or changed signature, or a behaviour change at the same
+  signature — additionally gets an entry under `## Unreleased` in
   [docs/BREAKING-CHANGES.md](docs/BREAKING-CHANGES.md): what changed, who it affects, and
   what to write instead. Note it in the PR description too, but the doc is what a consumer
   reads.
@@ -68,16 +70,25 @@ Releases are cut by pushing a `v*` tag. `MinVer` derives the package version fro
 untagged build produces a `0.0.0-alpha.0`-shaped version rather than a release one.
 
 In the release commit, retitle the `## Unreleased` section of
-[docs/BREAKING-CHANGES.md](docs/BREAKING-CHANGES.md) to the version being tagged
-(`` ## `v2.0.0-alpha.8` — since `v2.0.0-alpha.7` ``). A release that changes nothing a caller
-can see gets no section; the job says so in a notice rather than failing.
+[CHANGELOG.md](CHANGELOG.md) to `## 2.0.0-alpha.8 - <date>`, and the one in
+[docs/BREAKING-CHANGES.md](docs/BREAKING-CHANGES.md) to
+`` ## `v2.0.0-alpha.8` — since `v2.0.0-alpha.7` ``.
 
-Tag **annotated**, with the release notes as the message body. Nothing else in this
-repository records what a release was for — there is no changelog, and the workflow creates
-no GitHub Release — so the `release-notes` job refuses a lightweight tag and an empty
-message, and echoes the notes into the run summary. It also refuses a tag whose doc still
-says `Unreleased`. `publish` needs that job, so a refused tag builds and publishes nothing;
-fix it, delete the tag, and tag again.
+Every release gets a `CHANGELOG.md` section, including one that changes nothing a caller can
+see. `docs/BREAKING-CHANGES.md` gets one only when something broke — which is why the
+changelog is the doc the gate checks by name.
+
+Tag **annotated**, with the release notes as the message body. The workflow creates no GitHub
+Release, so the run summary is where those notes are read.
+
+The `release-notes` job fails the release when either doc still says `Unreleased`, when
+`CHANGELOG.md`'s newest heading is not the version being tagged, or when the tag is
+lightweight or its message is empty. `publish` needs that job, so a refused tag builds and
+publishes nothing. Fix it, delete the tag, and tag again:
+
+```bash
+git tag -d v2.0.0-alpha.8 && git push origin :refs/tags/v2.0.0-alpha.8
+```
 
 `.github/workflows/publish.yml` builds, tests, packs the four library projects, and pushes them to
 nuget.org. It authenticates with

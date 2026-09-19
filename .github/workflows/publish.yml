@@ -32,24 +32,30 @@ jobs:
   # anything is built, so a forgotten doc costs a re-tag and nothing else -- once
   # nuget.org has a version, what shipped with it cannot be replaced.
   #
-  # docs/BREAKING-CHANGES.md groups entries by the release they ship in. An
-  # "## Unreleased" heading at tag time means the section this tag ships was never
-  # retitled, so the doc tells a reader that changes they just received are still
-  # pending. Fix it, delete the tag, and tag again:
+  # Three conditions, all hard failures on a tag push:
+  #
+  #   1. Neither CHANGELOG.md nor docs/BREAKING-CHANGES.md still has an "## Unreleased"
+  #      heading. Both group entries by the release they ship in, so that heading at tag
+  #      time means the section this tag ships was never retitled, and the doc tells a
+  #      reader that changes they just received are still pending.
+  #   2. CHANGELOG.md's newest heading names this version. EVERY release gets a section
+  #      there, including one that changes nothing a caller can see, which is what makes
+  #      this checkable at all.
+  #   3. The tag is annotated and its message is non-empty.
+  #
+  # docs/BREAKING-CHANGES.md is deliberately NOT held to condition 2. Its contract is
+  # that a release changing nothing a caller sees has no section, so requiring a heading
+  # per tag would force an empty section onto every internals-only release -- one that
+  # exists to satisfy a gate and reads as "we checked" when nobody did. CHANGELOG.md is
+  # what makes the forgotten-section case catchable without that.
+  #
+  # Fix, delete the tag, and tag again:
   #
   #   git tag -d vX.Y.Z && git push origin :refs/tags/vX.Y.Z
   #
-  # The job also requires the tag to be annotated with a non-empty message. That
-  # message IS the release notes: this workflow creates no GitHub Release, and the repo
-  # keeps no CHANGELOG, so a lightweight or empty tag publishes packages whose reason
-  # for existing is recorded nowhere. A warning would not have stopped that, so it
-  # fails. The message is echoed into the run summary, which is where the notes are
-  # readable today.
-  #
-  # NOT enforced: that the newest heading in the doc names this tag. The doc's contract
-  # is "each release that changes what a caller sees gets a section", so a release with
-  # no caller-visible change correctly has none, and a hard check would force an empty
-  # section onto every patch. The mismatch is surfaced as a notice instead.
+  # On condition 3: this workflow creates no GitHub Release, so the tag message is
+  # where the release notes are read -- it is echoed into the run summary. A warning
+  # would not have stopped a lightweight tag from publishing, so it fails.
   #
   # On workflow_dispatch the steps are skipped and the job still succeeds. A skipped
   # job would skip the publish job that needs it, which would retire the dry run.
@@ -63,30 +69,38 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Assert BREAKING-CHANGES.md names this release
+      - name: Assert the docs describe this release
         if: ${{ github.event_name == 'push' }}
         shell: bash
         run: |
           set -euo pipefail
-          doc=docs/BREAKING-CHANGES.md
-          [ -f "$doc" ] || { echo "::error::$doc is missing."; exit 1; }
-          if grep -qiE '^##[[:space:]]+\[?Unreleased\]?[[:space:]]*$' "$doc"; then
-            echo "::error file=$doc::Still has an '## Unreleased' heading at ${GITHUB_REF_NAME}."
-            echo "Retitle that section to ${GITHUB_REF_NAME}, commit, and move the tag."
-            grep -niE '^##[[:space:]]+\[?Unreleased\]?[[:space:]]*$' "$doc"
-            exit 1
-          fi
-          echo "No unreleased section. ${GITHUB_REF_NAME} is described."
-          # The newest heading naming an older release is legitimate -- it means nothing
-          # a caller can see changed -- so this is a notice, not a failure. It exists so
-          # that "nothing broke" is a decision someone reads rather than an omission.
+          status=0
+          for doc in CHANGELOG.md docs/BREAKING-CHANGES.md; do
+            [ -f "$doc" ] || { echo "::error::$doc is missing."; exit 1; }
+            if grep -qiE '^##[[:space:]]+\[?Unreleased\]?[[:space:]]*$' "$doc"; then
+              echo "::error file=$doc::Still has an '## Unreleased' heading at ${GITHUB_REF_NAME}."
+              grep -niE '^##[[:space:]]+\[?Unreleased\]?[[:space:]]*$' "$doc"
+              status=1
+            fi
+          done
+          # CHANGELOG.md gets a section for EVERY release, so its newest heading must name
+          # this tag. The first token of that heading is compared as a string with any
+          # leading "[", backtick or "v" stripped, so 2.0.0 does not match 2.0.0-alpha.1.
+          # docs/BREAKING-CHANGES.md is exempt: a release with no caller-visible change
+          # correctly has no section there.
           version="${GITHUB_REF_NAME#v}"
-          newest="$(grep -m1 -E '^##[[:space:]]' "$doc" || true)"
+          newest="$(grep -m1 -E '^##[[:space:]]' CHANGELOG.md || true)"
           named="$(printf '%s\n' "$newest" | sed -E 's/^##[[:space:]]+//; s/^[[`]//; s/^v//; s/[]`[:space:]].*$//')"
           if [ "$named" != "$version" ]; then
-            echo "::notice file=$doc::Newest section is '${named:-none}', not ${version}."
-            echo "::notice file=$doc::Publishing ${GITHUB_REF_NAME} as a release with no caller-visible change. If that is wrong, add its section and move the tag."
+            echo "::error file=CHANGELOG.md::The newest heading is '${newest:-none}', not ${version}."
+            status=1
           fi
+          if [ "$status" -ne 0 ]; then
+            echo "Give ${GITHUB_REF_NAME} its CHANGELOG section, retitle any Unreleased section,"
+            echo "commit, and move the tag."
+            exit 1
+          fi
+          echo "CHANGELOG.md's newest section is ${version}, and neither doc has an Unreleased section."
 
       - name: Assert the tag carries release notes
         if: ${{ github.event_name == 'push' }}

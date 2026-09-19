@@ -183,9 +183,19 @@ Check `GetSupportedCommands` first: `0x43` is a pre-3.0 USART bootloader command
 3.0 onwards the device exposes Extended Erase (`0x44`) instead — the `ExtendedErase*` family
 below.
 
-The signatures are kept rather than deleted so a binary compiled against an earlier package
-still resolves the method instead of failing to JIT its caller with a
-`MissingMethodException`.
+**What "declared and non-callable" means, precisely.** The signature is still in the
+assembly, and its body still throws `NotImplementedException` — exactly what it did before.
+Nothing gained an implementation, and nothing touches the device.
+
+- **Compiling against this package**: the call is a **compile error**. There is no suppression
+  intended; use the replacement.
+- **A binary already compiled against an earlier package**: the method still resolves, so the
+  caller loads and runs, and the call throws `NotImplementedException` at the call site. That
+  is the reason the signatures are kept rather than deleted — deleting them turns a reachable
+  exception into a `MissingMethodException` that fails to JIT the whole calling method.
+
+So no route through `EraseMemory(address, length)` erases anything, on any part, in either
+case. There is no address-based erase in this library to reach.
 
 `ReadoutUnprotect` **is** implemented, and mass erases the flash. That is the mechanism of
 leaving RDP level 1, not a side effect that can be avoided.
