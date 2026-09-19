@@ -155,12 +155,33 @@ workable signature: `GetChecksum()` needs an address, a size, a CRC polynomial a
 and command `0x43` addresses flash by single-byte page code rather than by address and
 length.
 
+| Non-callable | Replacement |
+|---|---|
+| `Task GetChecksum(CancellationToken)` | `Task<uint> GetChecksum(uint address, uint numWords, uint crcPolynomial = 0x04C11DB7, uint crcInitialValue = 0xFFFFFFFF, CancellationToken)` |
+| `Task EraseMemory(uint address, ushort length, CancellationToken)` | `Task EraseMemory(IEnumerable<byte> pageNumbers, CancellationToken)`, or `Task EraseAllMemory(CancellationToken)` |
+| `Task WriteProtect(CancellationToken)` | none |
+| `Task WriteUnprotect(CancellationToken)` | none |
+| `Task ReadoutProtect(CancellationToken)` | none |
+
+> **The two `EraseMemory` overloads are not two spellings of one operation.** The obsolete
+> one took a flash address and a byte length. The replacement takes **AN3155 page codes** —
+> the device's own single-byte page numbers, as its reference manual defines them — and
+> erases exactly the pages listed. It does not interpret an address, and it does not derive
+> pages from one. Passing an address, or a length, erases whichever pages happen to carry
+> those numbers. The mapping from an address range to page codes needs a per-device flash
+> layout this library does not have, which is why the address form was never implemented
+> and is not being replaced by an equivalent.
+
 ```csharp
-// After — the implemented forms
+// After
 uint crc = await client.GetChecksum(address, numWords, token: token);
-await client.EraseMemory(new byte[] { 0, 1, 2 }, token);   // page codes
-await client.EraseAllMemory(token);
+await client.EraseMemory(new byte[] { 0, 1, 2 }, token);   // erases pages 0, 1 and 2
+await client.EraseAllMemory(token);                        // AN3155 global erase
 ```
+
+Check `GetSupportedCommands` first: `0x43` is a pre-3.0 USART bootloader command, and from
+3.0 onwards the device exposes Extended Erase (`0x44`) instead — the `ExtendedErase*` family
+below.
 
 The signatures are kept rather than deleted so a binary compiled against an earlier package
 still resolves the method instead of failing to JIT its caller with a

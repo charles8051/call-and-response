@@ -69,10 +69,15 @@ untagged build produces a `0.0.0-alpha.0`-shaped version rather than a release o
 
 In the release commit, retitle the `## Unreleased` section of
 [docs/BREAKING-CHANGES.md](docs/BREAKING-CHANGES.md) to the version being tagged
-(`` ## `v2.0.0-alpha.8` — since `v2.0.0-alpha.7` ``). The `release-notes` job refuses a tag
-whose doc still says `Unreleased`, and every other job needs it, so a refused tag builds and
-publishes nothing. Tag annotated, with the release notes as the message body — the job reads
-it into the run summary, and nothing else records what a release was for.
+(`` ## `v2.0.0-alpha.8` — since `v2.0.0-alpha.7` ``). A release that changes nothing a caller
+can see gets no section; the job says so in a notice rather than failing.
+
+Tag **annotated**, with the release notes as the message body. Nothing else in this
+repository records what a release was for — there is no changelog, and the workflow creates
+no GitHub Release — so the `release-notes` job refuses a lightweight tag and an empty
+message, and echoes the notes into the run summary. It also refuses a tag whose doc still
+says `Unreleased`. `publish` needs that job, so a refused tag builds and publishes nothing;
+fix it, delete the tag, and tag again.
 
 `.github/workflows/publish.yml` builds, tests, packs the four library projects, and pushes them to
 nuget.org. It authenticates with

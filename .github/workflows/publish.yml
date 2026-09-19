@@ -39,10 +39,17 @@ jobs:
   #
   #   git tag -d vX.Y.Z && git push origin :refs/tags/vX.Y.Z
   #
-  # The job also reads the annotated tag's message into the run summary. Nothing
-  # consumes it yet -- this workflow does not create a GitHub Release -- but the tag
-  # message is the release notes, and having it on the run is how a reviewer confirms
-  # the tag carries one before the packages go out.
+  # The job also requires the tag to be annotated with a non-empty message. That
+  # message IS the release notes: this workflow creates no GitHub Release, and the repo
+  # keeps no CHANGELOG, so a lightweight or empty tag publishes packages whose reason
+  # for existing is recorded nowhere. A warning would not have stopped that, so it
+  # fails. The message is echoed into the run summary, which is where the notes are
+  # readable today.
+  #
+  # NOT enforced: that the newest heading in the doc names this tag. The doc's contract
+  # is "each release that changes what a caller sees gets a section", so a release with
+  # no caller-visible change correctly has none, and a hard check would force an empty
+  # section onto every patch. The mismatch is surfaced as a notice instead.
   #
   # On workflow_dispatch the steps are skipped and the job still succeeds. A skipped
   # job would skip the publish job that needs it, which would retire the dry run.
@@ -70,8 +77,18 @@ jobs:
             exit 1
           fi
           echo "No unreleased section. ${GITHUB_REF_NAME} is described."
+          # The newest heading naming an older release is legitimate -- it means nothing
+          # a caller can see changed -- so this is a notice, not a failure. It exists so
+          # that "nothing broke" is a decision someone reads rather than an omission.
+          version="${GITHUB_REF_NAME#v}"
+          newest="$(grep -m1 -E '^##[[:space:]]' "$doc" || true)"
+          named="$(printf '%s\n' "$newest" | sed -E 's/^##[[:space:]]+//; s/^[[`]//; s/^v//; s/[]`[:space:]].*$//')"
+          if [ "$named" != "$version" ]; then
+            echo "::notice file=$doc::Newest section is '${named:-none}', not ${version}."
+            echo "::notice file=$doc::Publishing ${GITHUB_REF_NAME} as a release with no caller-visible change. If that is wrong, add its section and move the tag."
+          fi
 
-      - name: Read the annotated tag message
+      - name: Assert the tag carries release notes
         if: ${{ github.event_name == 'push' }}
         shell: bash
         run: |
@@ -81,8 +98,10 @@ jobs:
           git fetch --force --tags --quiet
           tag="${GITHUB_REF_NAME}"
           if [ "$(git cat-file -t "$tag" 2>/dev/null || true)" != "tag" ]; then
-            echo "::warning::${tag} is a lightweight tag and carries no release notes."
-            exit 0
+            echo "::error::${tag} is a lightweight tag, so it carries no release notes."
+            echo "Nothing else in this repository records what a release was for."
+            echo "Delete the tag, recreate it annotated with the notes as its message, and push it."
+            exit 1
           fi
           # A subject that is only the tag name repeats the version, so it is dropped.
           # Any other subject is part of the notes. Drop a PGP trailer if signed.
@@ -90,7 +109,9 @@ jobs:
           if [ "$subject" = "$tag" ]; then part='contents:body'; else part='contents'; fi
           body="$(git tag -l --format="%(${part})" "$tag" | sed '/-----BEGIN PGP SIGNATURE-----/,$d')"
           if [ -z "${body//[$' \t\n']/}" ]; then
-            echo "::warning::${tag} has an empty message; it carries no release notes."
+            echo "::error::${tag} is annotated but its message is empty, so it carries no release notes."
+            echo "Write them into the tag message and move the tag."
+            exit 1
           fi
           {
             echo "## Release notes on \`${tag}\`"
