@@ -11,6 +11,8 @@ manages transport connections — you provide an active `IDuplexPipe` from
 > **The 2.x line is in alpha.** The public surface moves between alpha releases.
 > [CHANGELOG.md](CHANGELOG.md) is the record of each one; each breaking change is
 > listed with its fix in [docs/BREAKING-CHANGES.md](docs/BREAKING-CHANGES.md).
+> Coming from 1.1.1, start at
+> [Upgrading from `v1.1.1`](docs/BREAKING-CHANGES.md#upgrading-from-v111).
 
 ## Getting Started
 

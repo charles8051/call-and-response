@@ -10,7 +10,9 @@ appear.
 
 CallAndResponse is pre-1.0 in spirit while the 2.x line is in alpha: the public surface
 moves between alpha releases, and this file is what that owes you in return. Releases
-before `v2.0.0-alpha.7` are not described here.
+before `v2.0.0-alpha.7` have no section of their own. Coming from `v1.1.1`, the last stable
+1.x release, start at [Upgrading from `v1.1.1`](#upgrading-from-v111) at the end of this
+file, which maps that surface directly onto 2.x.
 
 **While a change is in flight**, add its entry under a `## Unreleased` heading. Retitle
 that heading to the version in the release commit — `.github/workflows/publish.yml`
@@ -290,3 +292,241 @@ change behaviour.
 
 `ExtendedErasePages` takes the page numbers rather than a count, which removes the
 off-by-one in `numPages` and lifts the old requirement that erasure start at page 0.
+
+## Upgrading from `v1.1.1`
+
+`v1.1.1` is the last stable 1.x release. Nothing between it and `v2.0.0-alpha.7` has a
+section of its own, so this one maps the 1.1.1 surface directly onto the current 2.x
+surface, and is kept current with it. It covers the four packages 1.1.1 published:
+`CallAndResponse`, `CallAndResponse.Transport.Serial`, `CallAndResponse.Protocol.Modbus` and
+`CallAndResponse.Transport.Ble`. `CallAndResponse.Protocol.Stm32Bootloader` had no stable
+1.x release; its changes are in the per-release sections above.
+
+In 1.1.1 a transceiver owned the port. It opened and closed it, polled it for bytes, and
+dropped whatever arrived after the message it was looking for. In 2.x you own the port, the
+library reads from an `IDuplexPipe` over it, and each receive takes a decoder that says where
+the frame ends. Most of the entries below follow from that.
+
+### 1. Every package targets `net8.0` only
+
+1.1.1 shipped `netstandard2.0` and `netstandard2.1`. 2.x ships `net8.0` alone, so a project
+on .NET Framework, .NET 6 or 7, Xamarin or Unity fails restore with `NU1202`. Those projects
+stay on 1.1.1 or move to .NET 8.
+
+### 2. Upgrade the packages together
+
+> **This one does not announce itself.** Each 1.1.1 package depends on `CallAndResponse`
+> with the open range `>= 1.1.1`, so NuGet restores a 1.1.1 transport or protocol package
+> next to a 2.x core with no warning. A 1.1.1 `CallAndResponse.Protocol.Modbus` then builds
+> too, and fails at runtime when `ModbusRtuClient` calls
+> `ITransceiver.SendReceive(ReadOnlyMemory<byte>, int, CancellationToken)`, which 2.x does
+> not declare.
+
+A 1.1.1 `CallAndResponse.Transport.Serial` does fail the build, with `CS0012` asking for a
+reference to `Serilog`. That error names the wrong fix. Adding Serilog lets it build, and
+`SerialPortTransceiver` then fails at runtime, because it derives from `Transceiver`, which
+2.x seals.
+
+Move `CallAndResponse`, `CallAndResponse.Transport.Serial` and
+`CallAndResponse.Protocol.Modbus` to the same 2.x version in one change. Remove
+`CallAndResponse.Transport.Ble`, which has no 2.x release (entry 11).
+
+### 3. You open and close the port
+
+1.1.1's `ITransceiver` had `Open`, `Close` and `IsOpen`, and `SerialPortTransceiver` built
+its own `System.IO.Ports.SerialPort`. 2.x has no lifecycle members. You open an
+`RJCP.IO.Ports.SerialPortStream`, wrap it in a `SerialDuplexPipe`, and hand that to a
+`Transceiver`.
+
+```csharp
+// Before
+var transceiver = new SerialPortTransceiver("COM5", 115200);
+await transceiver.Open(token);
+// ...
+await transceiver.Close(token);
+
+// After
+using RJCP.IO.Ports;
+
+using var port = new SerialPortStream("COM5", 115200, 8, Parity.None, StopBits.One);
+port.Open();
+await using var pipe = new SerialDuplexPipe(port);
+var transceiver = new Transceiver(pipe);
+```
+
+`Parity` and `StopBits` now come from `RJCP.IO.Ports`, not `System.IO.Ports`, and the
+constructor takes data bits before parity. Disposing the `SerialDuplexPipe` stops its read
+pump and leaves the port open. 1.1.1's `Send` and `ReceiveMessage` reopened a closed port on
+their own; 2.x never does.
+
+| 1.1.1 | 2.x |
+|---|---|
+| `ITransceiver.Open`, `Close`, `IsOpen` | none. Open and close the port yourself |
+| `SerialPortTransceiver(portName, baudRate, parity, dataBits, stopBits, logger)` | `new Transceiver(new SerialDuplexPipe(openPort))` |
+| `TransceiverFactory`, `CreateSerialTransceiver(portName)` | as above |
+| `WindowsSerialPortTransceiver(vid, pid, ...)`, `CreateCP210xTransceiver(...)`, `CreateWindowsSerialTransceiver(vid, pid)` | none. Resolve the port name yourself |
+| `SerialPortUtils.FindPortNameById(vid, pid)`, `SerialPortUtils.GetCp210xComPort()` | none |
+| `abstract class Transceiver`, subclassed for a custom transport | `sealed class Transceiver` over an `IDuplexPipe`. Provide the pipe instead |
+
+The VID/PID lookup was a Windows-only WMI query, and device discovery is now out of scope
+([ADR-0009](adr/adr-0009-device-discovery-out-of-scope.md)). Resolve the port name with a
+discovery library and pass it to `SerialPortStream`. `System.Management` is no longer a
+dependency.
+
+A custom transport that is already a `Stream` needs no pipe class of its own:
+
+```csharp
+var transceiver = new Transceiver(PipeReader.Create(stream), PipeWriter.Create(stream));
+```
+
+### 4. Send and receive take a decoder
+
+`ITransceiver` is now `Send` plus two `Receive(IFrameDecoder, ...)` overloads. The five
+`SendReceive` overloads were interface members in 1.1.1. Their replacements are extension
+methods in `TransceiverExtensions`, with the framing passed as a value from `Frame` in
+`CallAndResponse.Framing`.
+
+| 1.1.1 | 2.x |
+|---|---|
+| `SendReceive(string, char, token)` | `SendReceiveString(string, char, token)` |
+| `SendReceive(string, string, token)` | `SendReceiveString(string, string, token)` |
+| `SendReceive(bytes, int numBytesExpected, token)` | `SendReceive(bytes, Frame.Exactly(numBytesExpected), token)` |
+| `SendReceive(bytes, ReadOnlyMemory<byte> pattern, token)` | `SendReceive(bytes, Frame.UntilPattern(pattern), token)` |
+| `SendReceive(bytes, Func<ReadOnlyMemory<byte>, int>, token)` | `SendReceive(bytes, decoder, token)`. See entry 6 |
+| `ReceiveMessage(Func<ReadOnlyMemory<byte>, int>, token)` | `Receive(decoder, token)`. See entry 6 |
+
+The returned payloads match: both versions leave the terminator or pattern out. What happens
+to the bytes after it has changed, in entry 5.
+
+A test double that implemented `ITransceiver` now implements `Send` and the two `Receive`
+overloads, and nothing else.
+
+### 5. Bytes after a frame wait for the next receive
+
+> **This one does not announce itself.** 1.1.1 read each reply into a fresh buffer and
+> returned the start of it. Everything after the message in that buffer was dropped with it:
+> the terminator, a `\n` after a `\r`, a second reply that arrived in the same read. 2.x
+> consumes the frame and its delimiter and leaves the rest in the pipe, where the next
+> receive starts.
+
+A device that answers `OK\r\n`, read with a `'\r'` terminator, shows the difference. 1.1.1
+lost the `\n` when it arrived in the same read as the `\r`, and returned it at the start of
+the next reply when it did not. 2.x returns `\nOK` for the second reply every time.
+Terminate on the whole sequence:
+
+```csharp
+var reply = await transceiver.SendReceiveString(command, "\r\n", token);
+```
+
+Two 1.1.1 hangs are gone for the same reason. `SendReceive(bytes, n, token)` completed only
+when the buffer held exactly `n` bytes, so a device that sent more before the read returned
+was waited on until cancellation or the 1024-byte cap (entry 7). `Frame.Exactly(n)` returns
+the first `n` and keeps the rest. An empty reply, where the terminator is the first byte,
+never completed either, because a detector result of `0` meant "keep reading". It now
+returns an empty payload.
+
+### 6. A custom detector becomes a decoder
+
+1.1.1's `Func<ReadOnlyMemory<byte>, int>` returned the length of the message at the head of
+the buffer, or `0` to keep reading. An `IFrameDecoder` writes the payload and reports how
+many bytes it consumed. Check the `Frame` catalogue first: `LengthPrefixed`, `Between`,
+`UntilIdle` and the `Validated` combinator cover most hand-written detectors. For one they
+do not, this adapter keeps the 1.1.1 function as it is:
+
+```csharp
+using System.Buffers;
+using CallAndResponse.Framing;
+
+static IFrameDecoder FromDetector(Func<ReadOnlyMemory<byte>, int> detectMessage) => Frame.OverSpan(
+    (received, isIdle, isTransportComplete, payload) =>
+    {
+        int length = detectMessage(received.ToArray());
+        if (length <= 0 || length > received.Length) return FrameDecodeResult.NeedMoreData;
+        payload.Write(received[..length]);
+        return FrameDecodeResult.Frame(length);
+    });
+
+var reply = await transceiver.SendReceive(request, FromDetector(detectMessage), token);
+```
+
+A length longer than the buffer waits for more bytes, where 1.1.1 returned what it had. The
+adapter copies the buffer on every call; `Frame.Custom` reads the `ReadOnlySequence<byte>`
+without one.
+
+### 7. The receive buffer has no size cap
+
+> **This one does not announce itself.** 1.1.1's serial transport threw `IOException` with
+> "buffer overflow" once 1024 bytes arrived without a message. 2.x buffers until the decoder
+> finds a frame or the token fires, so a peer that never sends the delimiter grows memory
+> instead of failing.
+
+Put a cap back with `WithMaxLength`, which throws `FramingException`:
+
+```csharp
+var line = await transceiver.Receive(Frame.UntilTerminator((byte)'\n').WithMaxLength(1024), token);
+```
+
+### 8. Logging uses `Microsoft.Extensions.Logging`
+
+1.1.1 took a `Serilog.ILogger`, and built a Serilog console logger when given none. 2.x
+takes `ILogger<T>` from `Microsoft.Extensions.Logging` and logs nothing unless you pass one.
+
+| 1.1.1 | 2.x |
+|---|---|
+| `SerialPortTransceiver(..., Serilog.ILogger logger)` | `new Transceiver(pipe, ILogger<Transceiver> logger)` |
+| `ModbusRtuClient` built its own console logger | `new ModbusRtuClient(channel, ILogger<ModbusRtuClient> logger)` |
+
+`Serilog` and `Serilog.Sinks.Console` no longer arrive as transitive dependencies. Code that
+used them through CallAndResponse needs its own package reference.
+`Serilog.Extensions.Logging` bridges a Serilog logger into the 2.x constructors.
+
+### 9. `ModbusRtuClient` takes a `ModbusRtuChannel`
+
+1.1.1's client took an `ITransceiver`, and `IModbusClient` had `Open` and `Close`. 2.x's
+client takes a `ModbusRtuChannel`, which binds RTU framing (the CRC and the inter-frame gap)
+to a transceiver. `Open` and `Close` are gone, because the port is yours (entry 3).
+
+```csharp
+// Before
+var client = new ModbusRtuClient(transceiver);
+await client.Open(token);
+
+// After
+var client = new ModbusRtuClient(ModbusRtu.Channel(transceiver, baudRate: 115200));
+```
+
+`ReadHoldingRegisters` and `WriteRegisters` keep their signatures and their byte order: each
+16-bit register is byte-swapped on the way in and on the way out, as before.
+`ModbusTransportException` is now public, so it can be caught by type.
+
+### 10. Modbus requests and responses are checked
+
+> **This one does not announce itself.** The signatures are unchanged. What goes over the
+> wire, and what comes back as an exception, are not.
+
+- **`WriteRegisters` sends a valid FC16 request.** 1.1.1 put the byte count in the quantity
+  field, left out the byte-count field, and waited for 5 reply bytes where the device sends
+  8. 2.x sends the register count, the byte count and the data, and checks the reply.
+- **Response CRCs are verified.** 1.1.1 never checked them, so a corrupted reply came back as
+  register values. 2.x throws `ModbusFramingException`.
+- **An exception response raises `ModbusProtocolException`.** 1.1.1's `ReadHoldingRegisters`
+  waited for a full-length reply that never came, and `WriteRegisters` threw
+  `IndexOutOfRangeException` reading the exception code. 2.x frames on the inter-frame gap,
+  so the short reply parses, and `ExceptionCode` carries the device's code.
+
+### 11. The BLE transport has no 2.x package
+
+`CallAndResponse.Transport.Ble` (`BleNordicUartTransceiver`, `CreateBleTransceiver`) was
+published up to 1.6.1-alpha and has no 2.x release. Its 2.x counterpart, `BleNordicUartPipe`
+in `CallAndResponse.Transport.BleNordicUart`, is not published; reference the project or copy
+the file. It pairs two pipes and does nothing else. Your code owns the BLE connection, the
+notification handler that writes into `RxWriter`, and the loop that drains `TxReader` to the
+characteristic. [ADR-0021](adr/adr-0021-drop-transport-packages.md) proposes removing it.
+
+### Removed without a replacement
+
+| 1.1.1 | Instead |
+|---|---|
+| `ArrayExtensions.Locate(byte[], byte[])` | `MemoryExtensions.IndexOf` finds the first match |
+| `TransceiverConnectionException` | nothing. 2.x never opens a connection, so nothing throws it |
+| `TransceiverFactory` | see entry 3 |
