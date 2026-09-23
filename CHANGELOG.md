@@ -20,8 +20,8 @@ backends — the BCL `SerialPort` and RJCP's `SerialPortStream` (ADR-0019)" unde
 was false, and the entry is removed. `CallAndResponse.Transport.Serial` 2.0.0-alpha.7 contains
 one public type, `SerialDuplexPipe`, whose only constructor takes an
 `RJCP.IO.Ports.SerialPortStream`. Its public surface is unchanged since 2.0.0-alpha.5, and the
-package's one behavioral change in this release is the #11 read-pump fix under Fixed. No release ships
-ADR-0019's `System.IO.Ports` backend.
+package's one behavioral change in this release is the #11 read-pump fix under Fixed. No
+release ships ADR-0019's `System.IO.Ports` backend.
 
 ### Added
 - **`IFrameEncoder` and `IFrameCodec`** — the send-side seam `ITransceiver` never had. Every
