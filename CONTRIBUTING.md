@@ -63,6 +63,9 @@ Write the ADR when the decision is made, not months later. ADR-0015 is what happ
   [docs/BREAKING-CHANGES.md](docs/BREAKING-CHANGES.md): what changed, who it affects, and
   what to write instead. Note it in the PR description too, but the doc is what a consumer
   reads.
+- If that change moves a 2.x replacement named in the doc's `Upgrading from v1.1.1` section,
+  update that section in the same PR. It maps 1.1.1 onto the current surface, not onto a
+  release, so nothing else keeps it true.
 
 ## Releasing
 
