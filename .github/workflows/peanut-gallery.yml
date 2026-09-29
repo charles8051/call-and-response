@@ -16,6 +16,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  statuses: write   # the peanut-gallery commit status (commit-status below)
 
 # cancel-in-progress: false, unlike ci.yml, which cancels. A kill here recorded a
 # CANCELLED conclusion that turned the PR check rollup UNSTABLE even though the review
@@ -55,7 +56,7 @@ jobs:
     # this file, on the base repo's token — so a condition here is one an outsider
     # cannot edit, and is a real boundary rather than hygiene. Without it, any GitHub
     # account commenting on a PR of this public repo starts a job on the maintainer's
-    # own hardware, holding OPENROUTER_API_KEY and pull-requests: write. The action
+    # own hardware, holding OPENROUTER_API_KEY, pull-requests: write and statuses: write. The action
     # refuses untrusted callers internally, but the job has already been scheduled,
     # checked out, and handed the secrets by then.
     #
@@ -96,14 +97,21 @@ jobs:
           # reviewer reads the PR diff from the API, not from local history.
 
       # Pinned to a commit, not a branch. This is the one step that runs third-party code
-      # on a self-hosted runner while holding a provider API key and pull-requests: write,
-      # so a mutable ref means whoever can push to that repository's main executes here on
-      # the next PR event, across every open PR, with no diff in this repo to review.
+      # on a self-hosted runner while holding a provider API key, pull-requests: write and
+      # statuses: write, so a mutable ref means whoever can push to that repository's main
+      # executes here on the next PR event, across every open PR, with no diff in this repo
+      # to review.
       #
-      # To move it: pick a tag, resolve it with
-      # `gh api repos/charles8051/peanut-gallery/tags`, and paste both here.
-      - uses: charles8051/peanut-gallery@aa1f3845086e0400b5d64070b876a45444207bad # v0.1.1
+      # Pinned at v0.1.2, the first release with the commit-status gate. To move it: pick a
+      # tag, resolve it with `gh api repos/charles8051/peanut-gallery/tags`, and paste both here.
+      - uses: charles8051/peanut-gallery@e4ca3862a3954519409142840080f9e62c31cbfa # v0.1.2
         with:
           config: .github/peanut-gallery.json   # single general reviewer; orchestrator adds diff-specific reviewers
           pr-number: ${{ github.event.pull_request.number || github.event.issue.number }}
           openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          # Posts a `peanut-gallery` commit status on the PR head: pending while the panel
+          # reviews, success only when it reports the head with no findings. Make it a
+          # required check to hold auto-merge. The concurrency group above keeps an older
+          # run from overwriting a newer run's status. A fork PR never gets one (its token is
+          # read-only), so with the status required it merges by admin bypass.
+          commit-status: true
